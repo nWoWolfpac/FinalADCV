@@ -107,13 +107,13 @@ def print_history_summary(history):
             f"Train Loss = {data['train_loss']:.4f}, "
             f"Val Loss = {data['val_loss']:.4f}, "
             f"mIoU = {data['metrics']['mean_iou']:.4f}, "
-            f"Acc = {data['metrics']['accuracy']:.4f}"
+            f"Acc = {data['metrics']['pixel_accuracy']:.4f}"
         )
         print(msg)
     print("======================================\n")
 
 def save_history_csv(history, save_path="train_history.csv"):
-    keys = ["epoch", "train_loss", "val_loss", "mean_iou", "accuracy"]
+    keys = ["epoch", "train_loss", "val_loss", "mean_iou", "pixel_accuracy"]
     with open(save_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=keys)
         writer.writeheader()
@@ -122,11 +122,12 @@ def save_history_csv(history, save_path="train_history.csv"):
                 "epoch": epoch + 1,
                 "train_loss": data["train_loss"],
                 "val_loss": data["val_loss"],
-                "mIoU": data["metrics"]["mean_iou"],
-                "accuracy": data["metrics"]["accuracy"]
+                "mean_iou": data["metrics"]["mean_iou"],
+                "pixel_accuracy": data["metrics"]["pixel_accuracy"]
             }
             writer.writerow(row)
     print(f">>> Training history saved to {save_path}")
+
 
 
 # ======================================================
