@@ -35,7 +35,7 @@ STAGE1 = {
 STAGE2 = {
     "input_size": 96,               # DFC2020 patch size
     "batch_size": 16,
-    "num_epochs": 10,
+    "num_epochs": 50,
     "freeze_encoder_epochs": 5,
     "encoder_lr": 5e-4,
     "decoder_lr": 1e-4,
