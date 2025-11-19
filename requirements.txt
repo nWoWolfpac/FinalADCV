@@ -1,0 +1,15 @@
+torch>=2.0
+torchvision
+datasets==2.21.0
+numpy
+matplotlib
+seaborn
+tqdm
+pillow
+scikit-learn
+tifffile
+pyarrow==15.0.1
+lightning
+wandb
+configilm
+lmdb

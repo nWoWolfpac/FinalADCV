@@ -1,0 +1,7 @@
+.idea/
+checkpoints/
+wandb/
+hf_models/
+_data/
+
+*.pyc
