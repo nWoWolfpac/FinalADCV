@@ -242,25 +242,59 @@ class Trainer:
             log_interval=50,
             save_best_only=True,
             checkpoint_metric="loss",
+            save_history=True,
+            history_csv_path="train_history.csv",
+            history_pickle_path="train_history.pkl"
     ):
-        for epoch in range(1, num_epochs + 1):
-            print(f"Epoch {epoch}/{num_epochs}")
+        """
+        Fit loop for training + validation
 
+        Returns:
+            history: list of dicts, each dict = {
+                'train_loss': float,
+                'val_loss': float,
+                'metrics': dict (pixel_accuracy, mean_iou, etc.)
+            }
+        """
+        history = []
+
+        for epoch in range(1, num_epochs + 1):
+            print(f"\nEpoch {epoch}/{num_epochs}")
+
+            # --------------------
+            # TRAIN
+            # --------------------
             tr = self.train_epoch(train_loader, log_interval)
-            val = self.validate(val_loader, metrics_class(num_classes))
+
+            # --------------------
+            # VALIDATE
+            # --------------------
+            val_metrics_obj = metrics_class(num_classes)
+            val = self.validate(val_loader, val_metrics_obj)
 
             print(
                 f"Epoch {epoch} - train_loss: {tr['loss']:.4f}, val_loss: {val['loss']:.4f}"
             )
 
-            self.history["train_loss"].append(tr["loss"])
-            self.history["val_loss"].append(val["loss"])
+            # --------------------
+            # STORE HISTORY
+            # --------------------
+            epoch_dict = {
+                "train_loss": tr["loss"],
+                "val_loss": val["loss"],
+                "metrics": {k: v for k, v in val.items() if k != "loss"}
+            }
+            history.append(epoch_dict)
 
-            if self.scheduler and not isinstance(
-                    self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
-            ):
+            # --------------------
+            # SCHEDULER
+            # --------------------
+            if self.scheduler and not isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 self.scheduler.step()
 
+            # --------------------
+            # CHECKPOINT
+            # --------------------
             metric_val = val.get(checkpoint_metric, val["loss"])
             is_best = (self.best_metric is None) or (metric_val < self.best_metric)
 
@@ -271,7 +305,29 @@ class Trainer:
                 if not save_best_only:
                     self._save_checkpoint(epoch, best=False)
 
-        return self.history
+        # --------------------
+        # SAVE HISTORY
+        # --------------------
+        if save_history:
+            # CSV
+            import csv
+            keys = ["epoch", "train_loss", "val_loss"] + list(history[0]["metrics"].keys())
+            with open(history_csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=keys)
+                writer.writeheader()
+                for i, e in enumerate(history):
+                    row = {"epoch": i + 1, "train_loss": e["train_loss"], "val_loss": e["val_loss"]}
+                    row.update(e["metrics"])
+                    writer.writerow(row)
+            print(f">>> History saved as CSV: {history_csv_path}")
+
+            # Pickle
+            import pickle
+            with open(history_pickle_path, "wb") as f:
+                pickle.dump(history, f)
+            print(f">>> History saved as Pickle: {history_pickle_path}")
+
+        return history
 
     def _save_checkpoint(self, epoch, best=False):
         path = self.checkpoint_dir / (
