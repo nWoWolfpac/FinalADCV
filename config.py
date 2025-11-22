@@ -19,7 +19,7 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 NUM_GPUS = torch.cuda.device_count() if torch.cuda.is_available() else 0
 SEED = 42
 
-# Stage1: Encoder pretrain on EuroSAT
+# Stage1: Encoder pretrain on BigEarthNet
 STAGE1 = {
     "input_size": 224,
     "batch_size": 4,

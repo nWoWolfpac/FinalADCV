@@ -47,6 +47,8 @@ class EncoderClassifier(nn.Module):
         super().__init__()
         self.backbone = backbone
         model_id = BACKBONE_MODEL_IDS[backbone]
+
+        # Load pretrained model from Hugging Face
         self.base_model = BigEarthNetv2_0_ImageClassifier.from_pretrained(model_id)
 
         # Extract encoder only
