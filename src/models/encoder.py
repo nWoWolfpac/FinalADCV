@@ -29,10 +29,10 @@ def extract_encoder(model, backbone: str):
             head = linear_layers[-1]
         in_features = head.in_features
     elif backbone == "mobilenetv4_hybrid":
-        encoder = model.model.features
-        head = getattr(model.model, "classifier", None)
+        encoder = model.model
+        head = getattr(encoder, "classifier", None)
         if head is None:
-            linear_layers = [m for m in model.model.modules() if isinstance(m, nn.Linear)]
+            linear_layers = [m for m in encoder.modules() if isinstance(m, nn.Linear)]
             head = linear_layers[-1]
         in_features = head.in_features
     else:
