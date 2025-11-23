@@ -5,6 +5,7 @@ from config import DEVICE, STAGE2, NUM_CLASSES
 from src.data.dataset_utils import create_dfc2020_loaders
 from src.models.encoder import EncoderClassifier
 from src.models.deeplabv3plus import DeepLabV3Plus
+from src.models.segnet import SegNet
 from src.utils import Trainer, SegmentationMetrics
 import matplotlib.pyplot as plt
 import numpy as np
@@ -134,7 +135,10 @@ def save_history_csv(history, save_path="train_history.csv"):
 # MAIN SCRIPT
 # ======================================================
 def main():
-    parser = argparse.ArgumentParser(description="Stage-2 training with DeepLabV3+ and pretrained encoder")
+    parser = argparse.ArgumentParser(description="Stage-2 training with segmentation model and pretrained encoder")
+    parser.add_argument("--model", type=str, default="deeplabv3",
+                        choices=["deeplabv3", "segnet"],
+                        help="Segmentation model architecture")
     parser.add_argument("--backbone", type=str, default="resnet50",
                         choices=["resnet18", "resnet50", "resnet101", "mobilevit", "mobilenetv4_hybrid"],
                         help="Backbone to load pretrained encoder")
@@ -164,18 +168,32 @@ def main():
         num_workers=STAGE2["num_workers"],
     )
 
-    # Init DeepLabV3+
-    model = DeepLabV3Plus(
-        num_classes=NUM_CLASSES,
-        backbone=args.backbone,
-        encoder_weights_path=None,
-        input_channels=12,
-        input_size=STAGE2["input_size"]
-    ).to(DEVICE)
+    # Init segmentation model (DeepLabV3+ or SegNet) sharing the same encoder interface
+    if args.model == "deeplabv3":
+        model = DeepLabV3Plus(
+            num_classes=NUM_CLASSES,
+            backbone=args.backbone,
+            encoder_weights_path=None,
+            input_channels=12,
+            input_size=STAGE2["input_size"]
+        ).to(DEVICE)
+    elif args.model == "segnet":
+        # SegNet implementation currently supports ResNet-like backbones
+        if not args.backbone.startswith("resnet"):
+            raise ValueError("SegNet currently supports only ResNet backbones (resnet18/50/101)")
+        model = SegNet(
+            num_classes=NUM_CLASSES,
+            backbone=args.backbone,
+            encoder_weights_path=None,
+            input_channels=12,
+            input_size=STAGE2["input_size"]
+        ).to(DEVICE)
+    else:
+        raise ValueError(f"Unsupported model: {args.model}")
 
-    # Replace encoder
+    # Replace encoder with the potentially better pretrained one
     model.encoder = encoder_model.encoder
-    print(f">>> Updated DeepLabV3+ encoder with 12-band input.")
+    print(f">>> Using {args.model} with backbone {args.backbone} and 12-band input.")
 
     # Loss + optimizer
     criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
