@@ -170,56 +170,41 @@ def main():
         num_workers=STAGE2["num_workers"],
     )
 
-    # Init UNet
+    # Init UNet - sẽ tự động tạo encoder trong __init__
     model = UNet(
         num_classes=NUM_CLASSES,
         backbone=args.backbone,
-        encoder_weights_path=None,
+        encoder_weights_path=None,  # Sẽ thay thế encoder sau
         input_channels=12,
         bilinear=True,
         dropout=args.dropout
     ).to(DEVICE)
 
-    # Replace encoder with pretrained one
+    # Thay thế encoder_model và các encoder layers với pretrained ones
+    # Điều này đảm bảo model sử dụng encoder đã được load weights từ checkpoint
     model.encoder_model = encoder_model
     encoder = encoder_model.encoder
     
     if args.backbone.startswith("resnet"):
         resnet = list(encoder.children())[0]
         
-        # Update encoder stages
+        # Thay thế các encoder stages với pretrained weights
         model.maxpool = resnet.maxpool
         model.layer1 = resnet.layer1
         model.layer2 = resnet.layer2
         model.layer3 = resnet.layer3
         model.layer4 = resnet.layer4
         
-        # Update first conv to accept 12 channels
-        old_conv = resnet.conv1
-        new_conv = nn.Conv2d(
-            12,
-            old_conv.out_channels,
-            kernel_size=old_conv.kernel_size,
-            stride=old_conv.stride,
-            padding=old_conv.padding,
-            bias=old_conv.bias is not None
-        )
-        # Initialize new conv weights
-        nn.init.kaiming_normal_(new_conv.weight, mode='fan_out', nonlinearity='relu')
-        # Copy pretrained weights for RGB channels if available
-        if old_conv.in_channels >= 3:
-            with torch.no_grad():
-                new_conv.weight[:, :3] = old_conv.weight[:, :3]
-                # Initialize additional channels
-                nn.init.kaiming_normal_(new_conv.weight[:, 3:], mode='fan_out', nonlinearity='relu')
-        
+        # Thay thế inc layer: giữ lại conv đã được tạo cho 12 channels,
+        # nhưng sử dụng bn1 và act1 từ pretrained encoder
+        old_conv = model.inc[0]  # Conv đã được tạo cho 12 channels
         model.inc = nn.Sequential(
-            new_conv,
-            resnet.bn1,
-            resnet.act1
+            old_conv,      # Giữ lại conv cho 12 channels
+            resnet.bn1,    # Sử dụng pretrained bn1
+            resnet.act1    # Sử dụng pretrained act1
         )
     
-    print(f">>> Updated UNet encoder with 12-band input (S1+S2)")
+    print(f">>> Updated UNet encoder with pretrained weights and 12-band input (S1+S2)")
 
     # Loss + optimizer
     criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
