@@ -52,26 +52,34 @@ class Up(nn.Module):
     """
     Upsampling block with skip connection (U-Net decoder)
     Improved with better size handling and bilinear interpolation option
+    
+    Args:
+        x1_channels: Number of channels in x1 (from decoder, lower resolution)
+        x2_channels: Number of channels in x2 (from encoder skip connection)
+        out_channels: Number of output channels after processing
     """
     
-    def __init__(self, in_channels, out_channels, bilinear=True, dropout=0.0):
+    def __init__(self, x1_channels, x2_channels, out_channels, bilinear=True, dropout=0.0):
         super().__init__()
         
         # Use bilinear upsampling or transposed conv
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            # Reduce channels before concatenation
-            self.reduce = nn.Conv2d(in_channels, in_channels // 2, kernel_size=1, bias=False)
-            self.conv = DoubleConv(in_channels, out_channels, dropout=dropout)
+            # Reduce channels of x1 before concatenation
+            # x1_channels -> x1_channels // 2
+            self.reduce = nn.Conv2d(x1_channels, x1_channels // 2, kernel_size=1, bias=False)
+            # After concatenation: (x1_channels // 2 + x2_channels) -> out_channels
+            self.conv = DoubleConv(x1_channels // 2 + x2_channels, out_channels, dropout=dropout)
         else:
-            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+            self.up = nn.ConvTranspose2d(x1_channels, x1_channels // 2, kernel_size=2, stride=2)
             self.reduce = None
-            self.conv = DoubleConv(in_channels, out_channels, dropout=dropout)
+            # After concatenation: (x1_channels // 2 + x2_channels) -> out_channels
+            self.conv = DoubleConv(x1_channels // 2 + x2_channels, out_channels, dropout=dropout)
     
     def forward(self, x1, x2):
         """
-        x1: from decoder (lower resolution)
-        x2: from encoder skip connection (higher resolution)
+        x1: from decoder (lower resolution) - shape: (B, x1_channels, H1, W1)
+        x2: from encoder skip connection (higher resolution) - shape: (B, x2_channels, H2, W2)
         """
         x1 = self.up(x1)
         
@@ -197,11 +205,12 @@ class UNet(nn.Module):
             
             # ===== DECODER with U-Net SKIP CONNECTIONS =====
             # Each decoder block upsamples and concatenates with encoder skip
-            # Channel dimensions: [bottleneck + skip_channels, decoder_out]
-            self.up1 = Up(2048 + 1024, 1024, bilinear, dropout=dropout)  # Combine layer4 + layer3
-            self.up2 = Up(1024 + 512, 512, bilinear, dropout=dropout)    # Combine up1 + layer2
-            self.up3 = Up(512 + 256, 256, bilinear, dropout=dropout)     # Combine up2 + layer1
-            self.up4 = Up(256 + 64, 128, bilinear, dropout=dropout)      # Combine up3 + inc
+            # Args: (x1_channels, x2_channels, out_channels)
+            # x1: from decoder (lower resolution), x2: from encoder skip (higher resolution)
+            self.up1 = Up(2048, 1024, 1024, bilinear, dropout=dropout)  # Combine layer4 (2048) + layer3 (1024) -> 1024
+            self.up2 = Up(1024, 512, 512, bilinear, dropout=dropout)    # Combine up1 (1024) + layer2 (512) -> 512
+            self.up3 = Up(512, 256, 256, bilinear, dropout=dropout)     # Combine up2 (512) + layer1 (256) -> 256
+            self.up4 = Up(256, 64, 128, bilinear, dropout=dropout)      # Combine up3 (256) + inc (64) -> 128
             
             # Final upsampling to original resolution
             if bilinear:
