@@ -113,11 +113,69 @@ class DeepLabV3Plus(nn.Module):
                 self.low_level[0] = new_conv
                 print(f">>> Updated conv1 to {input_channels} input channels")
 
-        elif backbone in ["mobilevit", "mobilenetv4_hybrid"]:
-            # Với MobileViT/MobileNetV4, split khoảng 1/3 low, 2/3 high
-            split_idx = len(children) // 3
-            self.low_level = nn.Sequential(*children[:split_idx])
-            self.high_level = nn.Sequential(*children[split_idx:])
+
+        elif backbone == "mobilevit":
+            m = self.encoder.vision_encoder
+            self.low_level = nn.Sequential(
+                m.stem,
+                m.stages[0]
+            )
+            # High-level = stages[1] trở đi
+            self.high_level = nn.Sequential(
+
+                *m.stages[1:]
+            )
+            print(">>> MobileViT split: low = stem + stages[0], high = stages[1:]")
+            # Nếu input_channels != 3, sửa conv đầu
+            if input_channels != 3:
+                old_conv = m.stem.conv
+                new_conv = nn.Conv2d(
+                    input_channels,
+                    old_conv.out_channels,
+                    kernel_size=old_conv.kernel_size,
+                    stride=old_conv.stride,
+                    padding=old_conv.padding,
+                    bias=old_conv.bias is not None
+                )
+                nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
+                m.stem.conv = new_conv
+                print(f">>> Updated MobileViT first conv to {input_channels} channels")
+
+
+
+        # ------------------ MOBILENET V4 HYBRID ------------------
+        elif backbone == "mobilenetv4_hybrid":
+            m = self.encoder.vision_encoder
+            self.low_level = nn.Sequential(
+                m.conv_stem,
+                m.bn1,
+                m.blocks[0],
+                m.blocks[1]
+            )
+
+            # High-level = blocks[2] trở đi
+            self.high_level = nn.Sequential(
+                *m.blocks[2:]
+            )
+
+            print(">>> MobileNetV4 hybrid split: low = conv_stem + bn1 + blocks[0:2], high = blocks[2:]")
+
+            # Nếu input_channels != 3, sửa conv đầu
+            if input_channels != 3:
+                old_conv = m.conv_stem
+                new_conv = nn.Conv2d(
+                    input_channels,
+                    old_conv.out_channels,
+                    kernel_size=old_conv.kernel_size,
+                    stride=old_conv.stride,
+                    padding=old_conv.padding,
+                    bias=old_conv.bias is not None
+                )
+                nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
+                m.conv_stem = new_conv
+                print(f">>> Updated MobileNetV4 hybrid first conv to {input_channels} channels")
+
+
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
 
