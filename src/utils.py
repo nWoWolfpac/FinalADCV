@@ -153,13 +153,44 @@ class Trainer:
                 with torch.amp.autocast(self.device):
                     preds = self.model(imgs)
                     loss = self.criterion(preds, masks)
+                
+                # Check for NaN/Inf loss
+                if torch.isnan(loss) or torch.isinf(loss):
+                    print(f"\n[ERROR] NaN/Inf loss at iteration {i+1}")
+                    print(f"  Loss: {loss.item()}")
+                    print(f"  Input stats: min={imgs.min().item():.4f}, max={imgs.max().item():.4f}, mean={imgs.mean().item():.4f}, has_nan={torch.isnan(imgs).any().item()}")
+                    print(f"  Pred stats: min={preds.min().item():.4f}, max={preds.max().item():.4f}, mean={preds.mean().item():.4f}, has_nan={torch.isnan(preds).any().item()}")
+                    print(f"  Mask stats: min={masks.min().item()}, max={masks.max().item()}, unique={torch.unique(masks).tolist()}")
+                    print(f"  Valid pixels: {((masks >= 0) & (masks < preds.size(1))).sum().item()}")
+                    print(f"  Ignored pixels: {(masks == 255).sum().item()}")
+                    # Skip this batch
+                    continue
+                
                 self.scaler.scale(loss).backward()
+                # Gradient clipping to prevent explosion
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 preds = self.model(imgs)
                 loss = self.criterion(preds, masks)
+                
+                # Check for NaN/Inf loss
+                if torch.isnan(loss) or torch.isinf(loss):
+                    print(f"\n[ERROR] NaN/Inf loss at iteration {i+1}")
+                    print(f"  Loss: {loss.item()}")
+                    print(f"  Input stats: min={imgs.min().item():.4f}, max={imgs.max().item():.4f}, mean={imgs.mean().item():.4f}, has_nan={torch.isnan(imgs).any().item()}")
+                    print(f"  Pred stats: min={preds.min().item():.4f}, max={preds.max().item():.4f}, mean={preds.mean().item():.4f}, has_nan={torch.isnan(preds).any().item()}")
+                    print(f"  Mask stats: min={masks.min().item()}, max={masks.max().item()}, unique={torch.unique(masks).tolist()}")
+                    print(f"  Valid pixels: {((masks >= 0) & (masks < preds.size(1))).sum().item()}")
+                    print(f"  Ignored pixels: {(masks == 255).sum().item()}")
+                    # Skip this batch
+                    continue
+                
                 loss.backward()
+                # Gradient clipping to prevent explosion
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
 
             running_loss += loss.item()

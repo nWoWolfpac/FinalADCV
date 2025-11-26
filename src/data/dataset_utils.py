@@ -45,10 +45,26 @@ class DFC2020Dataset(Dataset):
         # Chỉ chọn 10 kênh optical theo pretrained
         optical = optical[self.OPTICAL_CHANNELS_10, :, :]  # (10, H, W)
 
-        # Normalize
-        radar = (radar - np.array(SENTINEL1_MEAN)[:, None, None]) / np.array(SENTINEL1_STD)[:, None, None]
-        optical = (optical - np.array(SENTINEL2_MEAN)[self.OPTICAL_CHANNELS_10, None, None]) / \
-                  np.array(SENTINEL2_STD)[self.OPTICAL_CHANNELS_10, None, None]
+        # Normalize với kiểm tra division by zero
+        radar_mean = np.array(SENTINEL1_MEAN)[:, None, None]
+        radar_std = np.array(SENTINEL1_STD)[:, None, None]
+        # Tránh division by zero
+        radar_std = np.maximum(radar_std, 1e-8)
+        radar = (radar - radar_mean) / radar_std
+        
+        optical_mean = np.array(SENTINEL2_MEAN)[self.OPTICAL_CHANNELS_10, None, None]
+        optical_std = np.array(SENTINEL2_STD)[self.OPTICAL_CHANNELS_10, None, None]
+        # Tránh division by zero
+        optical_std = np.maximum(optical_std, 1e-8)
+        optical = (optical - optical_mean) / optical_std
+        
+        # Kiểm tra NaN/Inf sau normalization
+        if np.isnan(radar).any() or np.isinf(radar).any():
+            print(f"WARNING: Radar contains NaN/Inf after normalization")
+            radar = np.nan_to_num(radar, nan=0.0, posinf=1.0, neginf=-1.0)
+        if np.isnan(optical).any() or np.isinf(optical).any():
+            print(f"WARNING: Optical contains NaN/Inf after normalization")
+            optical = np.nan_to_num(optical, nan=0.0, posinf=1.0, neginf=-1.0)
 
         # Convert sang Tensor
         radar_t = torch.from_numpy(radar)

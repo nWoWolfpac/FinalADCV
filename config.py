@@ -37,8 +37,8 @@ STAGE2 = {
     "batch_size": 16,
     "num_epochs": 50,
     "freeze_encoder_epochs": 5,
-    "encoder_lr": 5e-4,
-    "decoder_lr": 1e-4,
+    "encoder_lr": 1e-4,  # Giảm từ 5e-4 để tránh NaN
+    "decoder_lr": 5e-5,  # Giảm từ 1e-4 để tránh NaN
     "weight_decay": 1e-4,
     "optimizer": "adamw",
     "scheduler": "cosine",
