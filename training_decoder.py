@@ -219,9 +219,9 @@ def main():
     print(f">>> Loaded best checkpoint: {best_ckpt}")
 
     # Visualization
-    save_dir = "checkpoints_stage2/visualization_final"
-    visualize_predictions(model, val_loader, DEVICE, save_dir)
-    print(f">>> Saved visualizations to: {save_dir}")
+    # save_dir = "checkpoints_stage2/visualization_final"
+    # visualize_predictions(model, val_loader, DEVICE, save_dir)
+    # print(f">>> Saved visualizations to: {save_dir}")
 
 
 if __name__ == "__main__":

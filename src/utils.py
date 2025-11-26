@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import seaborn as sns
+import os
 
 
 #############################################
@@ -15,22 +15,18 @@ def _get_images_from_batch(batch, device):
     """
     Unified handler for all datasets:
     - If batch["image"] exists → use it (EuroSAT, BigEarthNet)
-    - If DFC2020 → combine optical + sar to 15-channel input
+    - If DFC2020 → combine optical + sar to 12-band input
     - Else raise error
     """
-    # Case 1: standard datasets (EuroSAT...)
     if "image" in batch:
         return batch["image"].float().to(device)
 
-    # Case 2: DFC2020 (optical=13ch, sar=2ch)
     if "optical" in batch:
         optical = batch["optical"].float().to(device)
-
         if "sar" in batch:
             sar = batch["sar"].float().to(device)
-            return torch.cat([optical, sar], dim=1)  # 15 channels
-
-        return optical  # some datasets may not have SAR
+            return torch.cat([optical, sar], dim=1)
+        return optical
 
     raise KeyError("No image-like key found in batch: expected one of ['image', 'optical', 'sar']")
 
@@ -38,7 +34,6 @@ def _get_images_from_batch(batch, device):
 #############################################
 # Metrics
 #############################################
-
 class Accuracy:
     def __init__(self, num_classes):
         self.num_classes = num_classes
@@ -107,7 +102,6 @@ class SegmentationMetrics:
 #############################################
 # Trainer
 #############################################
-
 class Trainer:
     def __init__(
             self,
@@ -141,7 +135,6 @@ class Trainer:
         for i, batch in enumerate(tqdm(loader, desc="Train")):
             imgs = _get_images_from_batch(batch, self.device)
 
-            # get mask/labels
             if "mask" in batch:
                 masks = batch["mask"]
             elif "label" in batch:
@@ -187,12 +180,7 @@ class Trainer:
         self.model.eval()
         running_loss = 0.0
         steps = 0
-
-        if metrics_obj:
-            metrics_obj.reset()
-            is_seg = isinstance(metrics_obj, SegmentationMetrics)
-        else:
-            is_seg = False
+        is_seg = isinstance(metrics_obj, SegmentationMetrics) if metrics_obj else False
 
         for batch in tqdm(loader, desc="Val"):
             imgs = _get_images_from_batch(batch, self.device)
@@ -223,7 +211,6 @@ class Trainer:
 
         avg_loss = running_loss / max(1, steps)
         results = {"loss": avg_loss}
-
         if metrics_obj:
             results.update(metrics_obj.compute())
 
@@ -246,39 +233,13 @@ class Trainer:
             history_csv_path="train_history.csv",
             history_pickle_path="train_history.pkl"
     ):
-        """
-        Fit loop for training + validation
-
-        Returns:
-            history: list of dicts, each dict = {
-                'train_loss': float,
-                'val_loss': float,
-                'metrics': dict (pixel_accuracy, mean_iou, etc.)
-            }
-        """
         history = []
-
         for epoch in range(1, num_epochs + 1):
             print(f"\nEpoch {epoch}/{num_epochs}")
-
-            # --------------------
-            # TRAIN
-            # --------------------
             tr = self.train_epoch(train_loader, log_interval)
-
-            # --------------------
-            # VALIDATE
-            # --------------------
             val_metrics_obj = metrics_class(num_classes)
             val = self.validate(val_loader, val_metrics_obj)
-
-            print(
-                f"Epoch {epoch} - train_loss: {tr['loss']:.4f}, val_loss: {val['loss']:.4f}"
-            )
-
-            # --------------------
-            # STORE HISTORY
-            # --------------------
+            print(f"Epoch {epoch} - train_loss: {tr['loss']:.4f}, val_loss: {val['loss']:.4f}")
             epoch_dict = {
                 "train_loss": tr["loss"],
                 "val_loss": val["loss"],
@@ -286,15 +247,9 @@ class Trainer:
             }
             history.append(epoch_dict)
 
-            # --------------------
-            # SCHEDULER
-            # --------------------
             if self.scheduler and not isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 self.scheduler.step()
 
-            # --------------------
-            # CHECKPOINT
-            # --------------------
             metric_val = val.get(checkpoint_metric, val["loss"])
             is_best = (self.best_metric is None) or (metric_val < self.best_metric)
 
@@ -305,12 +260,8 @@ class Trainer:
                 if not save_best_only:
                     self._save_checkpoint(epoch, best=False)
 
-        # --------------------
-        # SAVE HISTORY
-        # --------------------
         if save_history:
-            # CSV
-            import csv
+            import csv, pickle
             keys = ["epoch", "train_loss", "val_loss"] + list(history[0]["metrics"].keys())
             with open(history_csv_path, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=keys)
@@ -321,8 +272,6 @@ class Trainer:
                     writer.writerow(row)
             print(f">>> History saved as CSV: {history_csv_path}")
 
-            # Pickle
-            import pickle
             with open(history_pickle_path, "wb") as f:
                 pickle.dump(history, f)
             print(f">>> History saved as Pickle: {history_pickle_path}")
@@ -330,13 +279,133 @@ class Trainer:
         return history
 
     def _save_checkpoint(self, epoch, best=False):
-        path = self.checkpoint_dir / (
-            f"best_model.pth" if best else f"epoch_{epoch}.pth"
-        )
-        state = {
-            "epoch": epoch,
-            "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-        }
+        path = self.checkpoint_dir / (f"best_model.pth" if best else f"epoch_{epoch}.pth")
+        state = {"epoch": epoch,
+                 "model_state_dict": self.model.state_dict(),
+                 "optimizer_state_dict": self.optimizer.state_dict()}
         torch.save(state, path)
         print(f"Saved checkpoint: {path}")
+
+
+#############################################
+# POST-TRAINING EVALUATION / VISUALIZATION
+#############################################
+DFC2020_CLASSES_8 = [
+    "Forest", "Shrubland", "Grassland", "Wetlands",
+    "Croplands", "Urban/Built-up", "Barren", "Water"
+]
+
+
+def confusion_matrix(pred, gt, num_classes):
+    pred = pred.view(-1)
+    gt = gt.view(-1)
+    mask = (gt >= 0) & (gt < num_classes)
+    pred = pred[mask]
+    gt = gt[mask]
+    cm = torch.bincount(num_classes * gt + pred, minlength=num_classes * num_classes).reshape(num_classes, num_classes)
+    return cm
+
+
+def compute_iou_from_cm(cm):
+    num_classes = cm.shape[0]
+    IoU = []
+    for c in range(num_classes):
+        tp = cm[c, c].item()
+        fn = cm[c, :].sum().item() - tp
+        fp = cm[:, c].sum().item() - tp
+        denom = tp + fp + fn
+        IoU.append(tp / denom if denom > 0 else 0)
+    mIoU = sum(IoU) / num_classes
+    return IoU, mIoU
+
+
+def per_class_accuracy_from_cm(cm):
+    acc = []
+    for c in range(cm.shape[0]):
+        total = cm[c, :].sum().item()
+        acc.append(cm[c, c].item() / total if total > 0 else 0)
+    return acc
+
+
+def evaluate(model, val_loader, num_classes=8, device="cuda"):
+    model.eval()
+    model.to(device)
+    total_cm = torch.zeros((num_classes, num_classes), dtype=torch.long)
+
+    with torch.no_grad():
+        for batch in tqdm(val_loader, desc="Evaluating", ncols=100):
+            imgs = _get_images_from_batch(batch, device)
+            labels = batch["mask"].to(device)
+            preds = model(imgs).argmax(dim=1)
+            cm = confusion_matrix(preds, labels, num_classes)
+            total_cm += cm.to(total_cm.device)
+
+    iou, miou = compute_iou_from_cm(total_cm)
+    acc = per_class_accuracy_from_cm(total_cm)
+
+    print("\n==================== PER-CLASS ACCURACY ====================")
+    for name, a in zip(DFC2020_CLASSES_8, acc):
+        print(f"{name:15s}: {a * 100:.2f}%")
+
+    print("\n==================== PER-CLASS IoU ====================")
+    for name, i in zip(DFC2020_CLASSES_8, iou):
+        print(f"{name:15s}: {i * 100:.2f}%")
+
+    print(f"\n==================== mIoU: {miou * 100:.2f}% ====================")
+    print("\n==================== CONFUSION MATRIX (8×8) ====================")
+    print(total_cm)
+
+    return total_cm, acc, iou, miou
+
+
+def visualize_predictions(model, loader, device, save_dir, max_samples=5):
+    os.makedirs(save_dir, exist_ok=True)
+    model.eval()
+    count = 0
+    with torch.no_grad():
+        for batch in loader:
+            imgs = _get_images_from_batch(batch, device)
+            masks = batch["mask"].to(device)
+            preds = model(imgs).argmax(dim=1).cpu()
+            imgs = imgs.cpu()
+            masks = masks.cpu()
+
+            # Sentinel-2 optical channels + radar
+            B02 = imgs[:, 1]  # Blue
+            B03 = imgs[:, 2]  # Green
+            B04 = imgs[:, 3]  # Red
+            B08 = imgs[:, 7]  # NIR
+            VV = imgs[:, 10]
+            VH = imgs[:, 11]
+            ndvi = (B08 - B04) / (B08 + B04 + 1e-6)
+
+            def norm(x):
+                x = x.numpy()
+                return (x - x.min()) / (x.max() - x.min() + 1e-6)
+
+            B = imgs.size(0)
+            for i in range(B):
+                if count >= max_samples:
+                    return
+                fig, ax = plt.subplots(1, 5, figsize=(20, 4))
+                rgb = np.stack([norm(B04[i]), norm(B03[i]), norm(B02[i])], axis=-1)
+                radar_comp = np.stack([norm(VV[i]), norm(VH[i]), np.zeros_like(norm(VV[i]))], axis=-1)
+                ax[0].imshow(rgb);
+                ax[0].set_title("RGB Composite");
+                ax[0].axis("off")
+                ax[1].imshow(ndvi[i].numpy(), cmap="RdYlGn");
+                ax[1].set_title("NDVI");
+                ax[1].axis("off")
+                ax[2].imshow(radar_comp);
+                ax[2].set_title("Radar (VV,VH)");
+                ax[2].axis("off")
+                ax[3].imshow(masks[i].numpy(), cmap="viridis");
+                ax[3].set_title("GT Mask");
+                ax[3].axis("off")
+                ax[4].imshow(preds[i].numpy(), cmap="viridis");
+                ax[4].set_title("Prediction");
+                ax[4].axis("off")
+                plt.tight_layout()
+                plt.savefig(f"{save_dir}/sample_{count}.png")
+                plt.close()
+                count += 1
