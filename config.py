@@ -58,9 +58,32 @@ NUM_CLASSES = 8       # 8 lớp DFC2020
 CLASS_NAMES = [str(i) for i in range(NUM_CLASSES)]
 
 # Normalization placeholders (tính từ dữ liệu thật nếu cần)
-SENTINEL1_MEAN = [0.0, 0.0]
-SENTINEL1_STD = [1.0, 1.0]
-SENTINEL2_MEAN = [0.0] * 13
-SENTINEL2_STD = [1.0] * 13
-USE_NORMALIZATION = True
+SENTINEL1_MEAN = [-12.190531, -19.398623]
+SENTINEL1_STD = [5.172539, 6.659642]
+
+SENTINEL2_MEAN = [
+    995.894858,  # B02
+    901.027080,  # B03
+    745.697713,  # B04
+    962.572030,  # B05
+    1636.980287,  # B06
+    1927.371277,  # B07
+    1887.691487,  # B08
+    2100.474774,  # B8A
+    10.865773,  # B11
+    1397.347492,  # B12
+]
+
+SENTINEL2_STD = [
+    257.763536,  # B02
+    299.047602,  # B03
+    459.838902,  # B04
+    480.590249,  # B05
+    881.911941,  # B06
+    1108.584675,  # B07
+    1130.764276,  # B08
+    1238.471844,  # B8A
+    6.262344,  # B11
+    943.824479,  # B12
+]
 

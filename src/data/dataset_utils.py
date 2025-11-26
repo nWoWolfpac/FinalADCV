@@ -52,8 +52,11 @@ class DFC2020Dataset(Dataset):
         radar_std = np.maximum(radar_std, 1e-8)
         radar = (radar - radar_mean) / radar_std
         
-        optical_mean = np.array(SENTINEL2_MEAN)[self.OPTICAL_CHANNELS_10, None, None]
-        optical_std = np.array(SENTINEL2_STD)[self.OPTICAL_CHANNELS_10, None, None]
+        # SENTINEL2_MEAN và SENTINEL2_STD đã được sắp xếp theo thứ tự của 10 channels được chọn
+        # (B02, B03, B04, B05, B06, B07, B08, B8A, B11, B12)
+        # Nên dùng index trực tiếp [0:10] thay vì OPTICAL_CHANNELS_10
+        optical_mean = np.array(SENTINEL2_MEAN)[:, None, None]  # (10,) -> (10, 1, 1)
+        optical_std = np.array(SENTINEL2_STD)[:, None, None]     # (10,) -> (10, 1, 1)
         # Tránh division by zero
         optical_std = np.maximum(optical_std, 1e-8)
         optical = (optical - optical_mean) / optical_std
