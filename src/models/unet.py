@@ -160,6 +160,8 @@ class UNet(nn.Module):
             # Update first conv to accept multi-channel input
             if input_channels != 3:
                 old_conv = resnet.conv1
+                old_in_channels = old_conv.in_channels
+                
                 new_conv = nn.Conv2d(
                     input_channels,
                     old_conv.out_channels,
@@ -168,22 +170,30 @@ class UNet(nn.Module):
                     padding=old_conv.padding,
                     bias=old_conv.bias is not None
                 )
+                
                 # Initialize new conv weights
                 nn.init.kaiming_normal_(new_conv.weight, mode='fan_out', nonlinearity='relu')
-                # Copy pretrained weights for RGB channels if available
-                if input_channels >= 3:
-                    with torch.no_grad():
-                        new_conv.weight[:, :3] = old_conv.weight
-                        if input_channels > 3:
-                            # Initialize additional channels
-                            nn.init.kaiming_normal_(new_conv.weight[:, 3:], mode='fan_out', nonlinearity='relu')
+                
+                # Copy pretrained weights if compatible
+                with torch.no_grad():
+                    if input_channels == old_in_channels:
+                        # Same number of channels, copy directly
+                        new_conv.weight.copy_(old_conv.weight)
+                    elif input_channels > old_in_channels and old_in_channels > 0:
+                        # More channels in new conv, copy what we can
+                        # Copy first old_in_channels from old_conv to first old_in_channels of new_conv
+                        new_conv.weight[:, :old_in_channels] = old_conv.weight[:, :old_in_channels]
+                        # Initialize remaining channels
+                        if input_channels > old_in_channels:
+                            nn.init.kaiming_normal_(new_conv.weight[:, old_in_channels:], mode='fan_out', nonlinearity='relu')
+                    # If input_channels < old_in_channels, just use initialized weights
                 
                 self.inc = nn.Sequential(
                     new_conv,
                     resnet.bn1,
                     resnet.act1
                 )
-                print(f">>> Updated conv1 to accept {input_channels} input channels (S1+S2)")
+                print(f">>> Updated conv1 to accept {input_channels} input channels (was {old_in_channels}, S1+S2)")
             
             # ===== DECODER with U-Net SKIP CONNECTIONS =====
             # Each decoder block upsamples and concatenates with encoder skip
