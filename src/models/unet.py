@@ -6,38 +6,67 @@ from src.models.encoder import EncoderClassifier
 
 
 class DoubleConv(nn.Module):
-    """(Conv => BN => ReLU) * 2 - Standard U-Net block"""
+    """
+    (Conv => BN => ReLU) * 2 - Standard U-Net block
+    Improved with better initialization and optional dropout
+    """
     
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(self, in_channels, out_channels, mid_channels=None, dropout=0.0):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
-        self.double_conv = nn.Sequential(
+        
+        layers = [
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
+        ]
+        
+        if dropout > 0:
+            layers.append(nn.Dropout2d(dropout))
+        
+        layers.extend([
             nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
-        )
+        ])
+        
+        self.double_conv = nn.Sequential(*layers)
+        
+        # Initialize weights
+        self._initialize_weights()
+    
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
     
     def forward(self, x):
         return self.double_conv(x)
 
 
 class Up(nn.Module):
-    """Upsampling block with skip connection (U-Net decoder)"""
+    """
+    Upsampling block with skip connection (U-Net decoder)
+    Improved with better size handling and bilinear interpolation option
+    """
     
-    def __init__(self, in_channels, out_channels, bilinear=False):
+    def __init__(self, in_channels, out_channels, bilinear=True, dropout=0.0):
         super().__init__()
         
         # Use bilinear upsampling or transposed conv
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+            # Reduce channels before concatenation
+            self.reduce = nn.Conv2d(in_channels, in_channels // 2, kernel_size=1, bias=False)
+            self.conv = DoubleConv(in_channels, out_channels, dropout=dropout)
         else:
             self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            self.conv = DoubleConv(in_channels, out_channels)
+            self.reduce = None
+            self.conv = DoubleConv(in_channels, out_channels, dropout=dropout)
     
     def forward(self, x1, x2):
         """
@@ -50,8 +79,15 @@ class Up(nn.Module):
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
         
-        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
-                       diffY // 2, diffY - diffY // 2])
+        if diffX > 0 or diffY > 0:
+            x1 = F.pad(x1, [
+                diffX // 2, diffX - diffX // 2,
+                diffY // 2, diffY - diffY // 2
+            ])
+        
+        # Reduce channels if using bilinear
+        if self.reduce is not None:
+            x1 = self.reduce(x1)
         
         # Concatenate skip connection
         x = torch.cat([x2, x1], dim=1)
@@ -61,19 +97,33 @@ class Up(nn.Module):
 class UNet(nn.Module):
     """
     U-Net for semantic segmentation with pretrained encoder from BigEarthNet.
+    Based on DFC2020 baseline repository patterns.
     
     Architecture:
-        Encoder: ResNet50 pretrained on BigEarthNet (19 classes, 12 channels)
-        Decoder: U-Net style with skip connections at each level
+        Encoder: ResNet50/101 pretrained on BigEarthNet (12 channels: 2 radar + 10 optical)
+        Decoder: U-Net style with improved skip connections at each level
         Output: Segmentation masks (8 classes for DFC2020)
+    
+    Input: 12 channels (2 Sentinel-1 radar + 10 Sentinel-2 optical)
     """
     
-    def __init__(self, num_classes=8, backbone="resnet50", encoder_weights_path=None,
-                 input_channels=12, bilinear=False):
+    def __init__(
+        self, 
+        num_classes=8, 
+        backbone="resnet50", 
+        encoder_weights_path=None,
+        input_channels=12,
+        bilinear=True,
+        dropout=0.1
+    ):
         super().__init__()
         self.num_classes = num_classes
         self.backbone = backbone
         self.bilinear = bilinear
+        
+        # Fixed to 12 channels (S1 + S2)
+        if input_channels != 12:
+            raise ValueError(f"UNet only supports 12 input channels (got {input_channels})")
         
         # Load pretrained encoder from BigEarthNet
         self.encoder_model = EncoderClassifier(
@@ -94,19 +144,20 @@ class UNet(nn.Module):
             resnet = list(encoder.children())[0]
             
             # ===== ENCODER STAGES with SKIP CONNECTIONS =====
-            self.conv1 = nn.Sequential(
+            # Initial convolution
+            self.inc = nn.Sequential(
                 resnet.conv1,
                 resnet.bn1,
                 resnet.act1
             )  # Output: (B, 64, H/2, W/2)
             
             self.maxpool = resnet.maxpool  # Output: (B, 64, H/4, W/4)
-            self.layer1 = resnet.layer1    # Output: (B, 256, H/4, W/4)
-            self.layer2 = resnet.layer2    # Output: (B, 512, H/8, W/8)
-            self.layer3 = resnet.layer3    # Output: (B, 1024, H/16, W/16)
-            self.layer4 = resnet.layer4    # Output: (B, 2048, H/32, W/32) - bottleneck
+            self.layer1 = resnet.layer1    # Output: (B, 256, H/4, W/4) - Skip 1
+            self.layer2 = resnet.layer2    # Output: (B, 512, H/8, W/8) - Skip 2
+            self.layer3 = resnet.layer3    # Output: (B, 1024, H/16, W/16) - Skip 3
+            self.layer4 = resnet.layer4    # Output: (B, 2048, H/32, W/32) - Bottleneck
             
-            # Update first conv to accept 12 channels instead of 3
+            # Update first conv to accept multi-channel input
             if input_channels != 3:
                 old_conv = resnet.conv1
                 new_conv = nn.Conv2d(
@@ -117,31 +168,51 @@ class UNet(nn.Module):
                     padding=old_conv.padding,
                     bias=old_conv.bias is not None
                 )
+                # Initialize new conv weights
                 nn.init.kaiming_normal_(new_conv.weight, mode='fan_out', nonlinearity='relu')
-                self.conv1 = nn.Sequential(
+                # Copy pretrained weights for RGB channels if available
+                if input_channels >= 3:
+                    with torch.no_grad():
+                        new_conv.weight[:, :3] = old_conv.weight
+                        if input_channels > 3:
+                            # Initialize additional channels
+                            nn.init.kaiming_normal_(new_conv.weight[:, 3:], mode='fan_out', nonlinearity='relu')
+                
+                self.inc = nn.Sequential(
                     new_conv,
                     resnet.bn1,
                     resnet.act1
                 )
-                print(f">>> Updated conv1 to accept {input_channels} input channels")
+                print(f">>> Updated conv1 to accept {input_channels} input channels (S1+S2)")
             
             # ===== DECODER with U-Net SKIP CONNECTIONS =====
             # Each decoder block upsamples and concatenates with encoder skip
-            self.up1 = Up(2048 + 1024, 1024, bilinear)  # Combine layer4 + layer3
-            self.up2 = Up(1024 + 512, 512, bilinear)    # Combine up1 + layer2
-            self.up3 = Up(512 + 256, 256, bilinear)     # Combine up2 + layer1
-            self.up4 = Up(256 + 64, 128, bilinear)      # Combine up3 + conv1
+            # Channel dimensions: [bottleneck + skip_channels, decoder_out]
+            self.up1 = Up(2048 + 1024, 1024, bilinear, dropout=dropout)  # Combine layer4 + layer3
+            self.up2 = Up(1024 + 512, 512, bilinear, dropout=dropout)    # Combine up1 + layer2
+            self.up3 = Up(512 + 256, 256, bilinear, dropout=dropout)     # Combine up2 + layer1
+            self.up4 = Up(256 + 64, 128, bilinear, dropout=dropout)      # Combine up3 + inc
             
             # Final upsampling to original resolution
-            self.up5 = nn.Sequential(
-                nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
-                nn.BatchNorm2d(64),
-                nn.ReLU(inplace=True),
-                DoubleConv(64, 64)
-            )
+            if bilinear:
+                self.up5 = nn.Sequential(
+                    nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+                    DoubleConv(128, 64, dropout=dropout)
+                )
+            else:
+                self.up5 = nn.Sequential(
+                    nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
+                    nn.BatchNorm2d(64),
+                    nn.ReLU(inplace=True),
+                    DoubleConv(64, 64, dropout=dropout)
+                )
             
             # Output layer
             self.outc = nn.Conv2d(64, num_classes, kernel_size=1)
+            
+            # Initialize output layer
+            nn.init.xavier_uniform_(self.outc.weight)
+            nn.init.constant_(self.outc.bias, 0)
             
         elif backbone in ["mobilevit", "mobilenetv4_hybrid"]:
             raise NotImplementedError(f"U-Net with {backbone} backbone not yet implemented. Use ResNet.")
@@ -153,27 +224,27 @@ class UNet(nn.Module):
         Forward pass with skip connections at multiple scales
         
         Args:
-            x: Input tensor (B, 12, H, W)
+            x: Input tensor (B, 12, H, W) - 12 channels (S1+S2)
         
         Returns:
             Segmentation logits (B, num_classes, H, W)
         """
         # ===== ENCODER with SKIP CONNECTIONS =====
-        x1 = self.conv1(x)              # (B, 64, H/2, W/2)
-        x2 = self.maxpool(x1)           # (B, 64, H/4, W/4)
-        x2 = self.layer1(x2)            # (B, 256, H/4, W/4)
-        x3 = self.layer2(x2)            # (B, 512, H/8, W/8)
-        x4 = self.layer3(x3)            # (B, 1024, H/16, W/16)
-        x5 = self.layer4(x4)            # (B, 2048, H/32, W/32) - bottleneck
+        x1 = self.inc(x)              # (B, 64, H/2, W/2) - Skip 0
+        x2 = self.maxpool(x1)         # (B, 64, H/4, W/4)
+        x2 = self.layer1(x2)          # (B, 256, H/4, W/4) - Skip 1
+        x3 = self.layer2(x2)          # (B, 512, H/8, W/8) - Skip 2
+        x4 = self.layer3(x3)          # (B, 1024, H/16, W/16) - Skip 3
+        x5 = self.layer4(x4)          # (B, 2048, H/32, W/32) - Bottleneck
         
         # ===== DECODER with U-Net SKIP CONNECTIONS =====
         d4 = self.up1(x5, x4)  # (B, 1024, H/16, W/16) - combine with layer3
-        d3 = self.up2(d4, x3)  # (B, 512, H/8, W/8)    - combine with layer2
-        d2 = self.up3(d3, x2)  # (B, 256, H/4, W/4)    - combine with layer1
-        d1 = self.up4(d2, x1)  # (B, 128, H/2, W/2)    - combine with conv1
+        d3 = self.up2(d4, x3)   # (B, 512, H/8, W/8)    - combine with layer2
+        d2 = self.up3(d3, x2)   # (B, 256, H/4, W/4)    - combine with layer1
+        d1 = self.up4(d2, x1)   # (B, 128, H/2, W/2)    - combine with inc
         
         # Final upsampling to original resolution
-        out = self.up5(d1)     # (B, 64, H, W)
+        out = self.up5(d1)      # (B, 64, H, W)
         logits = self.outc(out)  # (B, num_classes, H, W)
         
         return logits
@@ -181,7 +252,7 @@ class UNet(nn.Module):
     def get_encoder_parameters(self):
         """Get parameters of pretrained encoder for differential learning rates"""
         params = []
-        params.extend(list(self.conv1.parameters()))
+        params.extend(list(self.inc.parameters()))
         params.extend(list(self.layer1.parameters()))
         params.extend(list(self.layer2.parameters()))
         params.extend(list(self.layer3.parameters()))
@@ -210,6 +281,22 @@ class UNet(nn.Module):
         for param in self.get_encoder_parameters():
             param.requires_grad = True
         print(">>> Encoder unfrozen")
+    
+    def get_model_info(self):
+        """Get model information"""
+        encoder_params = sum(p.numel() for p in self.get_encoder_parameters())
+        decoder_params = sum(p.numel() for p in self.get_decoder_parameters())
+        total_params = sum(p.numel() for p in self.parameters())
+        
+        return {
+            'backbone': self.backbone,
+            'input_channels': 12,
+            'num_classes': self.num_classes,
+            'encoder_params': encoder_params,
+            'decoder_params': decoder_params,
+            'total_params': total_params,
+            'encoder_ratio': encoder_params / total_params * 100
+        }
 
 
 if __name__ == "__main__":
@@ -218,26 +305,28 @@ if __name__ == "__main__":
     print("Testing U-Net Architecture")
     print("=" * 60)
     
-    model = UNet(num_classes=8, backbone="resnet50", input_channels=12)
+    # Test with 12 channels (S1+S2)
+    print("\nTesting UNet with 12 channels (S1+S2):")
+    model = UNet(
+        num_classes=8, 
+        backbone="resnet50", 
+        input_channels=12
+    )
     
-    # Test with dummy input
     dummy_input = torch.randn(2, 12, 96, 96)
     output = model(dummy_input)
     
-    print(f"\nInput shape:  {dummy_input.shape}")
-    print(f"Output shape: {output.shape}")
+    print(f"  Input shape:  {dummy_input.shape}")
+    print(f"  Output shape: {output.shape}")
     
-    # Count parameters
-    encoder_params = sum(p.numel() for p in model.get_encoder_parameters())
-    decoder_params = sum(p.numel() for p in model.get_decoder_parameters())
-    total_params = sum(p.numel() for p in model.parameters())
-    
-    print(f"\nEncoder parameters: {encoder_params:,}")
-    print(f"Decoder parameters: {decoder_params:,}")
-    print(f"Total parameters:   {total_params:,}")
-    print(f"Encoder ratio:      {encoder_params / total_params * 100:.1f}%")
+    info = model.get_model_info()
+    print(f"\n  Model Info:")
+    print(f"    Input channels: {info['input_channels']}")
+    print(f"    Encoder parameters: {info['encoder_params']:,}")
+    print(f"    Decoder parameters: {info['decoder_params']:,}")
+    print(f"    Total parameters:   {info['total_params']:,}")
+    print(f"    Encoder ratio:      {info['encoder_ratio']:.1f}%")
     
     print("\n" + "=" * 60)
     print("U-Net architecture test passed! ✓")
     print("=" * 60)
-
