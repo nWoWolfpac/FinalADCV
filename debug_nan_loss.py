@@ -73,12 +73,17 @@ def check_model_output(model, loader, num_batches=3):
             imgs = batch["image"].float().to(DEVICE)
             masks = batch["mask"].to(DEVICE)
             
+            # Fix mask shape: squeeze if needed (same as in training)
+            if masks.dim() == 4 and masks.size(1) == 1:
+                masks = masks.squeeze(1)
+            
             try:
                 preds = model(imgs)
                 
                 print(f"\nBatch {i+1}:")
                 print(f"  Input shape: {imgs.shape}")
                 print(f"  Output shape: {preds.shape}")
+                print(f"  Mask shape: {masks.shape}")
                 
                 # Check predictions
                 pred_nan = torch.isnan(preds).any().item()
@@ -94,6 +99,10 @@ def check_model_output(model, loader, num_batches=3):
                 
                 if pred_nan or pred_inf:
                     print(f"    ⚠️  WARNING: Predictions contain NaN or Inf!")
+                
+                # Check if predictions are too large (can cause NaN in softmax)
+                if abs(pred_max) > 100 or abs(pred_min) > 100:
+                    print(f"    ⚠️  WARNING: Predictions have very large values (>{100}), this can cause NaN in loss!")
                 
                 # Check loss
                 criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
