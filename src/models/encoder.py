@@ -1,7 +1,10 @@
 # src/models/encoder.py
+
 import torch
 import torch.nn as nn
-from reben.reben_publication.BigEarthNetv2_0_ImageClassifier import BigEarthNetv2_0_ImageClassifier
+from reben.reben_publication.BigEarthNetv2_0_ImageClassifier import (
+    BigEarthNetv2_0_ImageClassifier
+)
 
 BACKBONE_MODEL_IDS = {
     "resnet18": "BIFOLD-BigEarthNetv2-0/resnet18-all-v0.2.0",
@@ -13,68 +16,58 @@ BACKBONE_MODEL_IDS = {
 
 
 def extract_encoder(model, backbone: str):
-    """Trích encoder và in_features cho backbone"""
+    """
+    Tách encoder từ pretrained BigEarthNet model.
+    Loại bỏ classifier/linear cuối.
+    """
+    encoder = model.model  # tất cả backbone đều có .model
+
     if backbone.startswith("resnet"):
-        encoder = model.model
-        head = getattr(encoder, "fc", None)
-        if head is None:
-            linear_layers = [m for m in encoder.modules() if isinstance(m, nn.Linear)]
-            head = linear_layers[-1]
-        in_features = head.in_features
-    elif backbone == "mobilevit":
-        encoder = model.model
-        head = getattr(encoder, "classifier", None)
-        if head is None:
-            linear_layers = [m for m in encoder.modules() if isinstance(m, nn.Linear)]
-            head = linear_layers[-1]
-        in_features = head.in_features
-    elif backbone == "mobilenetv4_hybrid":
-        encoder = model.model
-        head = getattr(encoder, "classifier", None)
-        if head is None:
-            linear_layers = [m for m in encoder.modules() if isinstance(m, nn.Linear)]
-            head = linear_layers[-1]
-        in_features = head.in_features
+        if hasattr(encoder, "fc"):
+            encoder.fc = nn.Identity()
+    elif backbone in ["mobilevit", "mobilenetv4_hybrid"]:
+        if hasattr(encoder, "classifier"):
+            encoder.classifier = nn.Identity()
     else:
         raise ValueError(f"Unsupported backbone: {backbone}")
-    return encoder, in_features
+
+    return encoder, None  # Stage2 dùng feature map nên không cần in_features
 
 
-class EncoderClassifier(nn.Module):
-    """Stage-1 encoder + classifier"""
+class EncoderBackbone(nn.Module):
+    """Encoder Stage2 segmentation DeepLabV3Plus"""
 
-    def __init__(self, num_classes: int, backbone: str = "resnet50", pretrained: bool = True):
+    def __init__(self, backbone="resnet50", input_channels=12):
         super().__init__()
         self.backbone = backbone
-        model_id = BACKBONE_MODEL_IDS[backbone]
-        self.base_model = BigEarthNetv2_0_ImageClassifier.from_pretrained(model_id)
+        self.input_channels = input_channels
 
-        # Extract encoder only
-        self.encoder, in_features = extract_encoder(self.base_model, backbone)
-
-        # Classifier riêng (num_classes stage1 có thể = 19)
-        self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Sequential(
-            nn.Dropout(0.2),
-            nn.Linear(in_features, num_classes)
+        # Load pretrained BigEarthNet encoder
+        base_model = BigEarthNetv2_0_ImageClassifier.from_pretrained(
+            BACKBONE_MODEL_IDS[backbone]
         )
 
-    def forward(self, x, return_features=False):
-        """
-        return_features=True -> trả về feature map 4D cho DeepLabV3Plus
-        return_features=False -> logits classifier
-        """
-        features = self.encoder(x)
-        if return_features:
-            return features
-        if features.ndim == 4:
-            features = self.pool(features).flatten(1)
-        return self.classifier(features)
+        # Extract encoder (bỏ classifier)
+        encoder_base, _ = extract_encoder(base_model, backbone)
 
-    def save_encoder_weights(self, path):
+        # Nếu input_channels != 3, thêm conv 1x1 mapping -> 3 channels
+        if input_channels != 3:
+            self.input_conv = nn.Conv2d(input_channels, 3, kernel_size=1)
+        else:
+            self.input_conv = nn.Identity()
+
+        self.encoder = encoder_base
+
+    def forward(self, x):
+        """Trả về feature map 4D cho decoder segmentation"""
+        x = self.input_conv(x)
+        x = self.encoder(x)
+        return x
+
+    def save_encoder(self, path):
         torch.save({"encoder_state_dict": self.encoder.state_dict()}, path)
 
-    def load_encoder_weights(self, path, strict=False):
+    def load_encoder(self, path, strict=False):
         ckpt = torch.load(path, map_location="cpu")
         sd = ckpt.get("encoder_state_dict", ckpt)
         self.encoder.load_state_dict(sd, strict=strict)

@@ -34,8 +34,8 @@ STAGE1 = {
 # Stage2: Segmentation on DFC2020
 STAGE2 = {
     "input_size": 96,  # DFC2020 patch size
-    "batch_size": 32,
-    "num_epochs": 50,
+    "batch_size": 64,
+    "num_epochs": 1,
     "freeze_encoder_epochs": 5,
     "encoder_lr": 5e-4,
     "decoder_lr": 2e-3,
@@ -43,7 +43,7 @@ STAGE2 = {
     "optimizer": "adamw",
     "scheduler": "cosine",
     "min_lr": 1e-6,
-    "num_workers": 4,
+    "num_workers": 32,
     "pin_memory": True,
     "mixed_precision": True,
     "gradient_accumulation_steps": 1,
@@ -67,4 +67,3 @@ SENTINEL2_STD = [633.15169573, 650.2842772, 712.12507725, 965.23119807, 948.9819
 SENTINEL1_MEAN = [-12.54847273, -20.19237134]
 
 SENTINEL1_STD = [5.25697717, 5.91150917]
-USE_NORMALIZATION = True

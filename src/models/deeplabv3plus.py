@@ -2,11 +2,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from src.models.encoder import EncoderClassifier
-
 
 class ASPP(nn.Module):
-    def __init__(self, in_channels, out_channels, rates=[6, 12, 18]):
+    def __init__(self, in_channels, out_channels, rates=[6,12,18]):
         super().__init__()
         self.branches = nn.ModuleList()
         self.branches.append(nn.Sequential(
@@ -27,7 +25,7 @@ class ASPP(nn.Module):
             nn.ReLU(inplace=True)
         )
         self.project = nn.Sequential(
-            nn.Conv2d(out_channels * (len(rates) + 2), out_channels, kernel_size=1, bias=False),
+            nn.Conv2d(out_channels*(len(rates)+2), out_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             nn.Dropout2d(0.1)
@@ -41,7 +39,6 @@ class ASPP(nn.Module):
         res.append(gp)
         x = torch.cat(res, dim=1)
         return self.project(x)
-
 
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels, skip_channels, out_channels):
@@ -63,121 +60,95 @@ class DecoderBlock(nn.Module):
         x = self.conv1(x)
         return self.conv2(x)
 
-
 class DeepLabV3Plus(nn.Module):
-    def __init__(self, num_classes=8, backbone="resnet50", encoder_weights_path=None,
-                 input_channels=12, input_size=224):
+    def __init__(self, encoder, backbone="resnet50", num_classes=8, input_channels=12, input_size=224):
         super().__init__()
+        self.encoder = encoder
+        self.backbone = backbone
         self.input_channels = input_channels
         self.input_size = input_size
 
-        # Load pretrained encoder
-        self.encoder_model = EncoderClassifier(
-            num_classes=num_classes,
-            backbone=backbone,
-            pretrained=True
-        )
-        if encoder_weights_path:
-            self.encoder_model.load_encoder_weights(encoder_weights_path)
-
-        self.encoder = self.encoder_model.encoder
-
         # ---- Split low/high level tùy backbone ----
-        children = list(self.encoder.children())
         if backbone.startswith("resnet"):
-            # ResNet BigEarthNetv2 chỉ có 1 child
-            resnet = children[0]
-            self.low_level = nn.Sequential(
-                resnet.conv1,
-                resnet.bn1,
-                resnet.act1,
-                resnet.maxpool,
-                resnet.layer1
-            )
-            self.high_level = nn.Sequential(
-                resnet.layer2,
-                resnet.layer3,
-                resnet.layer4
-            )
-            if input_channels != 3:
-                old_conv = self.low_level[0]
-                new_conv = nn.Conv2d(
-                    input_channels,
-                    old_conv.out_channels,
-                    kernel_size=old_conv.kernel_size,
-                    stride=old_conv.stride,
-                    padding=old_conv.padding,
-                    bias=old_conv.bias is not None
+            # Nếu encoder không có conv1 chuẩn, tạo một conv đầu riêng
+            if self.input_channels != 3 or not hasattr(self.encoder, "conv1"):
+                self.input_conv = nn.Sequential(
+                    nn.Conv2d(self.input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False),
+                    nn.BatchNorm2d(64),
+                    nn.ReLU(inplace=True),
+                    nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
                 )
-                nn.init.kaiming_normal_(new_conv.weight, mode='fan_out', nonlinearity='relu')
-                self.low_level[0] = new_conv
-                print(f">>> Updated conv1 to {input_channels} input channels")
+            else:
+                self.input_conv = nn.Identity()  # pass through conv1 of encoder
 
+            self.low_level = getattr(self.encoder, "layer1", nn.Identity())
+            self.high_level = nn.Sequential(
+                getattr(self.encoder, "layer2", nn.Identity()),
+                getattr(self.encoder, "layer3", nn.Identity()),
+                getattr(self.encoder, "layer4", nn.Identity())
+            )
 
         elif backbone == "mobilevit":
-            m = self.encoder.vision_encoder
+            m = self.encoder
+            # Kiểm tra input_channels
+            expected_in = 3  # MobileViT mặc định dùng 3 channels
+            if self.input_channels != expected_in:
+                # Thêm conv mapping từ input_channels -> expected_in
+                self.input_conv = nn.Conv2d(
+                    in_channels=self.input_channels,
+                    out_channels=expected_in,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False
+                )
+            else:
+                self.input_conv = nn.Identity()
+
             self.low_level = nn.Sequential(
+                self.input_conv,
                 m.stem,
                 m.stages[0]
             )
-            # High-level = stages[1] trở đi
-            self.high_level = nn.Sequential(
-
-                *m.stages[1:]
-            )
-            print(">>> MobileViT split: low = stem + stages[0], high = stages[1:]")
-            # Nếu input_channels != 3, sửa conv đầu
-            if input_channels != 3:
-                old_conv = m.stem.conv
-                new_conv = nn.Conv2d(
-                    input_channels,
-                    old_conv.out_channels,
-                    kernel_size=old_conv.kernel_size,
-                    stride=old_conv.stride,
-                    padding=old_conv.padding,
-                    bias=old_conv.bias is not None
-                )
-                nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
-                m.stem.conv = new_conv
-                print(f">>> Updated MobileViT first conv to {input_channels} channels")
+            self.high_level = nn.Sequential(*m.stages[1:])
 
 
-
-        # ------------------ MOBILENET V4 HYBRID ------------------
         elif backbone == "mobilenetv4_hybrid":
-            m = self.encoder.vision_encoder
+            m = self.encoder
+            # Kiểm tra input_channels
+            expected_in = 3
+            if self.input_channels != expected_in:
+                self.input_conv = nn.Conv2d(
+                    in_channels=self.input_channels,
+                    out_channels=expected_in,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False
+                )
+            else:
+                self.input_conv = nn.Identity()
             self.low_level = nn.Sequential(
+                self.input_conv,
                 m.conv_stem,
                 m.bn1,
                 m.blocks[0],
                 m.blocks[1]
             )
-
-            # High-level = blocks[2] trở đi
-            self.high_level = nn.Sequential(
-                *m.blocks[2:]
-            )
-
-            print(">>> MobileNetV4 hybrid split: low = conv_stem + bn1 + blocks[0:2], high = blocks[2:]")
-
-            # Nếu input_channels != 3, sửa conv đầu
-            if input_channels != 3:
-                old_conv = m.conv_stem
-                new_conv = nn.Conv2d(
-                    input_channels,
-                    old_conv.out_channels,
-                    kernel_size=old_conv.kernel_size,
-                    stride=old_conv.stride,
-                    padding=old_conv.padding,
-                    bias=old_conv.bias is not None
-                )
-                nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
-                m.conv_stem = new_conv
-                print(f">>> Updated MobileNetV4 hybrid first conv to {input_channels} channels")
+            self.high_level = nn.Sequential(*m.blocks[2:])
 
 
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
+
+        # --- debug shapes ---
+        self.eval()
+        with torch.no_grad():
+            dummy = torch.zeros(1, self.input_channels, self.input_size, self.input_size)
+            low_debug = self.input_conv(dummy)
+            low_debug = self.low_level(low_debug)
+            high_debug = self.high_level(low_debug)
+        self.train()
 
         # Infer số channels
         self._infer_channels()
@@ -215,12 +186,10 @@ class DeepLabV3Plus(nn.Module):
         out = self.classifier(out)
         return out
 
+    # ----------------- Utility methods -----------------
     def get_encoder_parameters(self):
         return list(self.encoder.parameters())
 
     def get_decoder_parameters(self):
         exclude_prefixes = ("encoder", "low_level", "high_level")
-        return [p for n, p in self.named_parameters() if not any(n.startswith(prefix) for prefix in exclude_prefixes)]
-
-    def load_encoder_weights(self, weights_path, strict=False):
-        self.encoder_model.load_encoder_weights(weights_path, strict=strict)
+        return [p for n,p in self.named_parameters() if not any(n.startswith(prefix) for prefix in exclude_prefixes)]

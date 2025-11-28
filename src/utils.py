@@ -12,23 +12,30 @@ import os
 # NEW: unified loader for image data
 #############################################
 def _get_images_from_batch(batch, device):
-    """
-    Unified handler for all datasets:
-    - If batch["image"] exists → use it (EuroSAT, BigEarthNet)
-    - If DFC2020 → combine optical + sar to 12-band input
-    - Else raise error
-    """
-    if "image" in batch:
-        return batch["image"].float().to(device)
+    if isinstance(batch, dict):
+        if "image" in batch:
+            imgs = batch["image"]
+        elif "optical" in batch:
+            imgs = batch["optical"]
+            if "sar" in batch:
+                imgs = torch.cat([imgs, batch["sar"]], dim=1)
+        else:
+            raise KeyError("No image-like key found in batch: expected one of ['image','optical','sar']")
+    elif isinstance(batch, list):
+        imgs = torch.stack([b["image"] for b in batch], dim=0)
+    else:
+        raise TypeError(f"Unsupported batch type: {type(batch)}")
 
-    if "optical" in batch:
-        optical = batch["optical"].float().to(device)
-        if "sar" in batch:
-            sar = batch["sar"].float().to(device)
-            return torch.cat([optical, sar], dim=1)
-        return optical
+    if imgs.dim() == 3:
+        imgs = imgs.unsqueeze(0)
+    elif imgs.dim() != 4:
+        raise ValueError(f"Expected 3D or 4D tensor for images, got {imgs.shape}")
 
-    raise KeyError("No image-like key found in batch: expected one of ['image', 'optical', 'sar']")
+    # === Debug NaN/inf ===
+    if torch.isnan(imgs).any() or torch.isinf(imgs).any():
+        print("[DEBUG] Found NaN/inf in images batch")
+
+    return imgs.float().to(device)
 
 
 #############################################
@@ -67,19 +74,24 @@ class SegmentationMetrics:
         self.samples = 0
 
     def update(self, preds, targets, loss=0.0):
-        preds_lbl = preds.argmax(dim=1).cpu().numpy()
-        targets_np = targets.cpu().numpy()
-        B = preds_lbl.shape[0]
+        preds = preds.argmax(dim=1)
+        preds = preds.view(-1).cpu()
+        targets = targets.view(-1).cpu()
 
-        for b in range(B):
-            pred_flat = preds_lbl[b].ravel()
-            targ_flat = targets_np[b].ravel()
-            for t, p in zip(targ_flat, pred_flat):
-                if 0 <= t < self.num_classes and 0 <= p < self.num_classes:
-                    self.conf_matrix[t, p] += 1
+        mask = (targets >= 0) & (targets < self.num_classes)
+        preds = preds[mask]
+        targets = targets[mask]
 
-        self.total_loss += loss * B
-        self.samples += B
+        # Update confusion matrix (vectorized)
+        cm = torch.bincount(
+            self.num_classes * targets + preds,
+            minlength=self.num_classes * self.num_classes
+        ).reshape(self.num_classes, self.num_classes)
+
+        self.conf_matrix += cm.numpy()
+
+        self.total_loss += loss
+        self.samples += 1
 
     def compute(self):
         acc = np.diag(self.conf_matrix).sum() / (self.conf_matrix.sum() + 1e-8)
@@ -127,6 +139,9 @@ class Trainer:
     ###############################
     # TRAIN EPOCH
     ###############################
+    # ----------------------------
+    # TRAIN EPOCH
+    # ----------------------------
     def train_epoch(self, loader, log_interval=50):
         self.model.train()
         running_loss = 0.0
@@ -144,11 +159,16 @@ class Trainer:
             else:
                 raise KeyError("No mask/label/labels found in batch")
 
-            masks = masks.to(self.device)
+            masks = masks.to(self.device).long()
             if masks.dim() == 4 and masks.size(1) == 1:
                 masks = masks.squeeze(1)
-            self.optimizer.zero_grad()
 
+            # Skip batch nếu tất cả pixel là ignore_index
+            if (masks == 255).all():
+                print(f"[Train] Skipping batch {i} (all ignore_index)")
+                continue
+
+            self.optimizer.zero_grad()
             if self.scaler:
                 with torch.amp.autocast(self.device):
                     preds = self.model(imgs)
@@ -166,15 +186,15 @@ class Trainer:
             steps += 1
 
             if (i + 1) % log_interval == 0:
-                avg = running_loss / steps
+                avg = running_loss / max(1, steps)
                 print(f"[Train] iter {i + 1}, avg_loss={avg:.4f}")
 
         avg_loss = running_loss / max(1, steps)
         return {"loss": avg_loss}
 
-    ###############################
+    # ----------------------------
     # VALIDATE
-    ###############################
+    # ----------------------------
     @torch.no_grad()
     def validate(self, loader, metrics_obj=None):
         self.model.eval()
@@ -182,7 +202,7 @@ class Trainer:
         steps = 0
         is_seg = isinstance(metrics_obj, SegmentationMetrics) if metrics_obj else False
 
-        for batch in tqdm(loader, desc="Val"):
+        for i, batch in enumerate(tqdm(loader, desc="Val")):
             imgs = _get_images_from_batch(batch, self.device)
 
             if "mask" in batch:
@@ -194,8 +214,14 @@ class Trainer:
             else:
                 raise KeyError("No mask/label/labels found in batch")
 
+            masks = masks.to(self.device).long()
             if masks.dim() == 4 and masks.size(1) == 1:
                 masks = masks.squeeze(1)
+
+            # Skip batch nếu tất cả pixel là ignore_index
+            if (masks == 255).all():
+                print(f"[Val] Skipping batch {i} (all ignore_index)")
+                continue
 
             preds = self.model(imgs)
             loss = self.criterion(preds, masks)
@@ -335,7 +361,7 @@ def evaluate(model, val_loader, num_classes=8, device="cuda"):
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="Evaluating", ncols=100):
             imgs = _get_images_from_batch(batch, device)
-            labels = batch["mask"].to(device)
+            labels = batch["mask"].to(device).long()
             preds = model(imgs).argmax(dim=1)
             cm = confusion_matrix(preds, labels, num_classes)
             total_cm += cm.to(total_cm.device)

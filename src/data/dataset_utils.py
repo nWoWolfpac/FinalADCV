@@ -1,6 +1,6 @@
 # src/data/dataset_utils.py
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset, DataLoader
 from torch.nn.functional import interpolate
 import numpy as np
 from datasets import load_dataset, DatasetDict
@@ -11,90 +11,116 @@ from config import (
     SENTINEL1_MEAN,
     SENTINEL1_STD,
     SENTINEL2_MEAN,
-    SENTINEL2_STD
+    SENTINEL2_STD,
 )
 
+# -------------------------------
+# DFC2020 official class mapping
+# 0..17 → {0..7,255}
+# -------------------------------
+DFC2020_CLASSES = np.array([
+    255, 0, 0, 0, 0, 0, 1, 1, 255, 255,
+    2, 3, 4, 5, 4, 255, 6, 7
+], dtype=np.int64)
 
-# ---------------------------------------
-# Stage2: DFC2020 Segmentation (HF Arrow dataset)
-# ---------------------------------------
+
+def map_labels_safe(label_np: np.ndarray):
+    mapped = np.full_like(label_np, 255, dtype=np.int64)
+    valid_mask = (label_np >= 0) & (label_np < len(DFC2020_CLASSES))
+    mapped[valid_mask] = DFC2020_CLASSES[label_np[valid_mask]]
+
+    invalid_mask = (label_np != 255) & ~valid_mask
+    if invalid_mask.any():
+        uniq = np.unique(label_np[invalid_mask])
+        print(f"[WARN] Found INVALID labels (not 0..17 or 255): {uniq}")
+
+    return mapped
+
+
 class DFC2020Dataset(Dataset):
-    """
-    Dataset cho GFM-Bench / DFC2020 segmentation.
-    Chỉ lấy 12 kênh chuẩn ResNet50 pretrained: 2 radar + 10 optical
-    """
+    OPTICAL_CHANNELS_10 = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
 
-    # index các kênh optical dùng (0-indexed)
-    OPTICAL_CHANNELS_10 = [1,2,3,4,5,6,7,8,10,11]  # B02..B08, B8A, B11, B12
-
-    def __init__(self, hf_split, input_size=96):
-        self.split = hf_split
+    def __init__(self, hf_split, input_size=96, filter_empty=True):
         self.input_size = input_size
+        self.raw_split = hf_split
+        self.filter_empty = filter_empty
+
+        # ---- Filter examples with all-ignore masks ----
+        self.valid_indices = []
+        for idx, example in enumerate(self.raw_split):
+            label = map_labels_safe(np.array(example["label"], dtype=np.int64))
+            # Ignore pixels >7
+            label[label > 7] = 255
+            if filter_empty:
+                if (label != 255).any():
+                    self.valid_indices.append(idx)
+            else:
+                self.valid_indices.append(idx)
+
+        print(f"[INFO] Dataset filtered: {len(self.valid_indices)}/{len(self.raw_split)} examples kept.")
 
     def __len__(self):
-        return len(self.split)
+        return len(self.valid_indices)
 
     def __getitem__(self, idx):
-        example = self.split[idx]
+        real_idx = self.valid_indices[idx]
+        example = self.raw_split[real_idx]
 
-        # Radar (2 kênh) & Optical (13 kênh)
-        radar = np.array(example["radar"], dtype=np.float32)  # (2, H, W)
-        optical = np.array(example["optical"], dtype=np.float32)  # (13, H, W)
-        label = np.array(example["label"], dtype=np.int64)  # (H, W)
+        radar = torch.from_numpy(np.array(example["radar"], dtype=np.float32))
+        optical = torch.from_numpy(np.array(example["optical"], dtype=np.float32))[self.OPTICAL_CHANNELS_10]
 
-        # Chỉ chọn 10 kênh optical theo pretrained
-        optical = optical[self.OPTICAL_CHANNELS_10, :, :]  # (10, H, W)
+        radar = (radar - torch.tensor(SENTINEL1_MEAN)[:, None, None]) / torch.tensor(SENTINEL1_STD)[:, None, None]
+        optical = (optical - torch.tensor(SENTINEL2_MEAN)[self.OPTICAL_CHANNELS_10, None, None]) / \
+                  torch.tensor(SENTINEL2_STD)[self.OPTICAL_CHANNELS_10, None, None]
 
-        # Normalize
-        radar = (radar - np.array(SENTINEL1_MEAN)[:, None, None]) / np.array(SENTINEL1_STD)[:, None, None]
-        optical = (optical - np.array(SENTINEL2_MEAN)[self.OPTICAL_CHANNELS_10, None, None]) / \
-                  np.array(SENTINEL2_STD)[self.OPTICAL_CHANNELS_10, None, None]
-
-        # Convert sang Tensor
-        radar_t = torch.from_numpy(radar)
-        optical_t = torch.from_numpy(optical)
-        label_t = torch.from_numpy(label)
-
-        # Resize về input_size
         if self.input_size is not None:
-            radar_t = interpolate(radar_t.unsqueeze(0), size=(self.input_size, self.input_size), mode="bilinear",
-                                  align_corners=False).squeeze(0)
-            optical_t = interpolate(optical_t.unsqueeze(0), size=(self.input_size, self.input_size), mode="bilinear",
-                                    align_corners=False).squeeze(0)
-            label_t = interpolate(label_t.unsqueeze(0).unsqueeze(0).float(), size=(self.input_size, self.input_size),
-                                  mode="nearest").squeeze(0).long()
+            radar = interpolate(radar.unsqueeze(0), size=(self.input_size, self.input_size),
+                                mode="bilinear", align_corners=False).squeeze(0)
+            optical = interpolate(optical.unsqueeze(0), size=(self.input_size, self.input_size),
+                                  mode="bilinear", align_corners=False).squeeze(0)
 
-        # Concat radar + optical → 12 kênh
-        x = torch.cat([radar_t, optical_t], dim=0)  # (12, H', W')
+        x = torch.cat([radar, optical], dim=0)
 
-        return {
-            "image": x,       # dùng key "image" cho Trainer / utils.py
-            "mask": label_t   # (H', W')
-        }
+        # ---- Map label ----
+        label = torch.from_numpy(map_labels_safe(np.array(example["label"], dtype=np.int64)))
+        label[label > 7] = 255
+        if self.input_size is not None:
+            label = interpolate(label.unsqueeze(0).unsqueeze(0).float(),
+                                size=(self.input_size, self.input_size),
+                                mode="nearest").squeeze(0).long()
+        return {"image": x, "mask": label}
+
+
+# -------------------------------
+# Collate function to create batch
+# -------------------------------
+def dfc2020_collate_fn(batch):
+    imgs = torch.stack([b["image"] for b in batch], dim=0)  # (B,C,H,W)
+    masks = torch.stack([b["mask"] for b in batch], dim=0)  # (B,H,W)
+    return {"image": imgs, "mask": masks}
 
 
 def create_dfc2020_loaders(batch_size=None, input_size=None, num_workers=None):
-    """
-    Load DFC2020 trực tiếp từ HF Arrow dataset mà không cần script cũ.
-    """
     batch_size = batch_size or STAGE2["batch_size"]
     input_size = input_size or STAGE2["input_size"]
     num_workers = num_workers or STAGE2["num_workers"]
 
-    # Load Arrow dataset từ HF repo
-    ds: DatasetDict = load_dataset(DATASET_DFC2020, trust_remote_code=True)  # Arrow dataset
+    ds: DatasetDict = load_dataset(DATASET_DFC2020, trust_remote_code=True)
 
     train_ds = DFC2020Dataset(ds["train"], input_size=input_size)
     val_ds = DFC2020Dataset(ds["val"], input_size=input_size)
     test_ds = DFC2020Dataset(ds["test"], input_size=input_size)
 
-    print(f"DFC2020 splits sizes: train={len(train_ds)}, val={len(val_ds)}, test={len(test_ds)}")
+    print(f"DFC2020 splits: train={len(train_ds)}, val={len(val_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
+                              num_workers=num_workers, pin_memory=True,
+                              collate_fn=dfc2020_collate_fn)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers, pin_memory=True)
+                            num_workers=num_workers, pin_memory=True,
+                            collate_fn=dfc2020_collate_fn)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                             num_workers=num_workers, pin_memory=True)
+                             num_workers=num_workers, pin_memory=True,
+                             collate_fn=dfc2020_collate_fn)
 
     return train_loader, val_loader, test_loader
