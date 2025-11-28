@@ -13,3 +13,6 @@ lightning
 wandb
 configilm
 lmdb
+pyyaml>=6.0
+transformers>=4.30.0
+pandas>=2.0.0

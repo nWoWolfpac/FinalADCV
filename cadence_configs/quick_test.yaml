@@ -1,0 +1,36 @@
+# Quick Test Configuration (5 epochs only)
+name: "Quick Test - UNet++ ResNet50"
+script: training_unetpp.py
+
+# Arguments
+args:
+  backbone: resnet50
+  deep_supervision: true
+
+# Environment
+environment:
+  python: "3.10"
+  requirements: requirements.txt
+
+# Resources (minimal for quick test)
+resources:
+  gpu: T4
+  memory: 24GB
+  timeout: 1h
+
+# Sync settings
+sync:
+  upload:
+    - "*.py"
+    - "src/**"
+    - "config.py"
+  download:
+    - "checkpoints_unetpp_resnet50_ds/**"
+    - "*.csv"
+
+# Cost control
+cost:
+  max_cost: 2.00  # USD (very cheap for quick test)
+  auto_stop: true
+
+# Note: Remember to set num_epochs=5 in config.py for quick test

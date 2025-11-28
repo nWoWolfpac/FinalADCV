@@ -100,7 +100,24 @@ STAGE2 = {
 
 ## ▶️ Bước 3: Chạy Training trên Cadence
 
-### 3.1. Sử dụng Run Configurations (Khuyến nghị)
+### 3.1. Sử dụng YAML Config (Khuyến nghị) ⭐
+
+Project có sẵn YAML configs trong `cadence_configs/`:
+
+**Cách dùng:**
+1. Mở tab **JetBrains Cadence** (bottom panel)
+2. Click **"Run an execution"**
+3. Chọn **"Load from YAML"** hoặc **"Import configuration"**
+4. Browse và chọn file:
+   - `cadence_configs/resnet50.yaml` - ResNet50 baseline
+   - `cadence_configs/mobilevit.yaml` - Fast & light
+   - `cadence_configs/resnet101.yaml` - Best accuracy
+   - `cadence_configs/quick_test.yaml` - Quick test
+5. Review settings và click **"Start"**
+
+📖 Chi tiết: `cadence_configs/README.md`
+
+### 3.2. Sử dụng Run Configurations (XML)
 
 PyCharm đã có sẵn 3 run configurations:
 

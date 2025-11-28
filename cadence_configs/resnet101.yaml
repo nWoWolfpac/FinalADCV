@@ -1,0 +1,35 @@
+# UNet++ ResNet101 Training Configuration
+name: "UNet++ ResNet101 + Deep Supervision (Best Accuracy)"
+script: training_unetpp.py
+
+# Arguments
+args:
+  backbone: resnet101
+  deep_supervision: true
+  visualize: true
+
+# Environment
+environment:
+  python: "3.10"
+  requirements: requirements.txt
+
+# Resources (larger model needs more resources)
+resources:
+  gpu: A10        # A10 or A100 recommended
+  memory: 32GB
+  timeout: 8h
+
+# Sync settings
+sync:
+  upload:
+    - "*.py"
+    - "src/**"
+    - "config.py"
+  download:
+    - "checkpoints_unetpp_resnet101_ds/**"
+    - "*.csv"
+
+# Cost control
+cost:
+  max_cost: 20.00  # USD (more expensive due to longer training)
+  auto_stop: true

@@ -1,0 +1,36 @@
+# UNet++ ResNet50 Training Configuration
+name: "UNet++ ResNet50 + Deep Supervision"
+script: training_unetpp.py
+
+# Arguments
+args:
+  backbone: resnet50
+  deep_supervision: true
+  visualize: true
+  # encoder_checkpoint: checkpoints_stage1/resnet50_encoder.pth  # Uncomment if you have pretrained encoder
+
+# Environment
+environment:
+  python: "3.10"
+  requirements: requirements.txt
+
+# Resources
+resources:
+  gpu: A10        # T4 (16GB) | A10 (24GB) | A100 (40GB)
+  memory: 32GB
+  timeout: 6h
+
+# Sync settings
+sync:
+  upload:
+    - "*.py"
+    - "src/**"
+    - "config.py"
+  download:
+    - "checkpoints_unetpp_resnet50_ds/**"
+    - "*.csv"
+
+# Cost control
+cost:
+  max_cost: 15.00  # USD
+  auto_stop: true

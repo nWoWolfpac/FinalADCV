@@ -1,0 +1,120 @@
+# Cadence Configuration for UNet++ Training
+# This file defines execution configurations for JetBrains Cadence
+
+executions:
+  # Execution 1: ResNet50 with Deep Supervision
+  - name: "Train UNet++ ResNet50"
+    script: training_unetpp.py
+    args:
+      - --backbone
+      - resnet50
+      - --deep_supervision
+      - --visualize
+    environment:
+      python_version: "3.10"
+      requirements: requirements.txt
+    resources:
+      gpu: A10  # Options: T4, A10, A100
+      gpu_count: 1
+      memory: 32GB
+    timeout: 6h
+    description: "Train UNet++ with ResNet50 backbone and deep supervision"
+
+  # Execution 2: MobileViT with Deep Supervision (faster, lighter)
+  - name: "Train UNet++ MobileViT"
+    script: training_unetpp.py
+    args:
+      - --backbone
+      - mobilevit
+      - --deep_supervision
+      - --visualize
+    environment:
+      python_version: "3.10"
+      requirements: requirements.txt
+    resources:
+      gpu: T4  # Lighter model, T4 is enough
+      gpu_count: 1
+      memory: 24GB
+    timeout: 4h
+    description: "Train UNet++ with MobileViT backbone (faster, mobile-friendly)"
+
+  # Execution 3: ResNet101 with Deep Supervision (best accuracy)
+  - name: "Train UNet++ ResNet101"
+    script: training_unetpp.py
+    args:
+      - --backbone
+      - resnet101
+      - --deep_supervision
+      - --visualize
+    environment:
+      python_version: "3.10"
+      requirements: requirements.txt
+    resources:
+      gpu: A10  # Larger model needs more memory
+      gpu_count: 1
+      memory: 32GB
+    timeout: 8h
+    description: "Train UNet++ with ResNet101 backbone (best accuracy)"
+
+  # Execution 4: Quick Test (5 epochs only)
+  - name: "Quick Test ResNet50"
+    script: training_unetpp.py
+    args:
+      - --backbone
+      - resnet50
+      - --deep_supervision
+    environment:
+      python_version: "3.10"
+      requirements: requirements.txt
+      env_vars:
+        QUICK_TEST: "true"  # Can be used in code to reduce epochs
+    resources:
+      gpu: T4
+      gpu_count: 1
+      memory: 24GB
+    timeout: 1h
+    description: "Quick test run with 5 epochs"
+
+  # Execution 5: Compare Results
+  - name: "Compare Experiments"
+    script: compare_results.py
+    args: []
+    environment:
+      python_version: "3.10"
+      requirements: requirements.txt
+    resources:
+      gpu: none  # No GPU needed for comparison
+      memory: 8GB
+    timeout: 10m
+    description: "Compare results from multiple experiments"
+
+# Default settings for all executions
+defaults:
+  environment:
+    python_version: "3.10"
+    requirements: requirements.txt
+  resources:
+    region: auto  # Auto-select closest region
+  sync:
+    upload:
+      - "*.py"
+      - "src/**/*.py"
+      - "config.py"
+      - "requirements.txt"
+    download:
+      - "checkpoints_*/**"
+      - "experiments/**"
+      - "*.csv"
+      - "*.png"
+    exclude:
+      - "__pycache__"
+      - "*.pyc"
+      - ".git"
+      - "*.pth"  # Don't upload existing checkpoints
+      - "datasets/**"  # Don't upload datasets
+
+# Cost optimization
+cost_control:
+  max_cost_per_execution: 20.00  # USD
+  auto_stop_on_completion: true
+  idle_timeout: 5m  # Stop if idle for 5 minutes
