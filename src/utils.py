@@ -204,10 +204,12 @@ class Trainer:
             steps += 1
 
             if metrics_obj:
+                # For deep supervision (list output), use the main output for metrics
+                preds_for_metrics = preds[0] if isinstance(preds, list) else preds
                 if is_seg:
-                    metrics_obj.update(preds, masks, loss.item())
+                    metrics_obj.update(preds_for_metrics, masks, loss.item())
                 else:
-                    metrics_obj.update(preds, masks)
+                    metrics_obj.update(preds_for_metrics, masks)
 
         avg_loss = running_loss / max(1, steps)
         results = {"loss": avg_loss}
