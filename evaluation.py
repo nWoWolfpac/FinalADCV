@@ -29,9 +29,9 @@ def build_model(model_name, backbone, num_classes, input_channels=12, input_size
     """Build segmentation model"""
     if model_name == "deeplabv3":
         model = DeepLabV3Plus(
-            num_classes=num_classes,
+            encoder= None,
             backbone=backbone,
-            encoder_weights_path=None,
+            num_classes=num_classes,
             input_channels=input_channels,
             input_size=input_size
         )
