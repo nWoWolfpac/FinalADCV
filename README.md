@@ -11,7 +11,6 @@ Pipeline huấn luyện mô hình UNet cho bài toán semantic segmentation trê
 - [Hướng Dẫn Evaluation](#hướng-dẫn-evaluation)
 - [Cấu Hình](#cấu-hình)
 - [Kết Quả](#kết-quả)
-- [Troubleshooting](#troubleshooting)
 
 ---
 
