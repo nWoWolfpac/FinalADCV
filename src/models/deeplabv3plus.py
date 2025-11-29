@@ -90,10 +90,8 @@ class DeepLabV3Plus(nn.Module):
 
         elif backbone == "mobilevit":
             m = self.encoder
-            # Kiểm tra input_channels
-            expected_in = 3  # MobileViT mặc định dùng 3 channels
+            expected_in = getattr(m, "in_channels", 12)
             if self.input_channels != expected_in:
-                # Thêm conv mapping từ input_channels -> expected_in
                 self.input_conv = nn.Conv2d(
                     in_channels=self.input_channels,
                     out_channels=expected_in,
@@ -104,19 +102,27 @@ class DeepLabV3Plus(nn.Module):
                 )
             else:
                 self.input_conv = nn.Identity()
-
-            self.low_level = nn.Sequential(
-                self.input_conv,
-                m.stem,
-                m.stages[0]
-            )
-            self.high_level = nn.Sequential(*m.stages[1:])
-
+            self.low_level = self.input_conv
+            class MobileViTWrapper(nn.Module):
+                def __init__(self, encoder):
+                    super().__init__()
+                    self.encoder = encoder
+                def forward(self, x):
+                    # Trả về feature map 4D, không flatten
+                    if hasattr(self.encoder, "forward_features"):
+                        return self.encoder.forward_features(x)
+                    else:
+                        # fallback: forward trực tiếp, nhưng cần kiểm tra encoder không flatten
+                        out = self.encoder(x)
+                        if out.dim() == 2:
+                            # reshape thành [B,C,H,W] giả sử H=W=1
+                            out = out.unsqueeze(-1).unsqueeze(-1)
+                        return out
+            self.high_level = MobileViTWrapper(m)
 
         elif backbone == "mobilenetv4_hybrid":
             m = self.encoder
-            # Kiểm tra input_channels
-            expected_in = 3
+            expected_in = getattr(m, "in_channels", 12)
             if self.input_channels != expected_in:
                 self.input_conv = nn.Conv2d(
                     in_channels=self.input_channels,
@@ -128,14 +134,24 @@ class DeepLabV3Plus(nn.Module):
                 )
             else:
                 self.input_conv = nn.Identity()
-            self.low_level = nn.Sequential(
-                self.input_conv,
-                m.conv_stem,
-                m.bn1,
-                m.blocks[0],
-                m.blocks[1]
-            )
-            self.high_level = nn.Sequential(*m.blocks[2:])
+            self.low_level = self.input_conv
+            # Wrapper để đảm bảo output 4D feature map
+            class MobileNetV4HybridWrapper(nn.Module):
+                def __init__(self, encoder):
+                    super().__init__()
+                    self.encoder = encoder
+                def forward(self, x):
+                    # Trả về feature map 4D, không flatten
+                    if hasattr(self.encoder, "forward_features"):
+                        return self.encoder.forward_features(x)
+                    else:
+                        # fallback: forward trực tiếp, nhưng cần kiểm tra encoder không flatten
+                        out = self.encoder(x)
+                        if out.dim() == 2:
+                            # reshape thành [B,C,H,W] giả sử H=W=1
+                            out = out.unsqueeze(-1).unsqueeze(-1)
+                        return out
+            self.high_level = MobileNetV4HybridWrapper(m)
 
 
         else:

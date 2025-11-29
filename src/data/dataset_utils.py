@@ -14,43 +14,19 @@ from config import (
     SENTINEL2_STD,
 )
 
-# -------------------------------
-# DFC2020 official class mapping
-# 0..17 → {0..7,255}
-# -------------------------------
-DFC2020_CLASSES = np.array([
-    255, 0, 0, 0, 0, 0, 1, 1, 255, 255,
-    2, 3, 4, 5, 4, 255, 6, 7
-], dtype=np.int64)
-
-
-def map_labels_safe(label_np: np.ndarray):
-    mapped = np.full_like(label_np, 255, dtype=np.int64)
-    valid_mask = (label_np >= 0) & (label_np < len(DFC2020_CLASSES))
-    mapped[valid_mask] = DFC2020_CLASSES[label_np[valid_mask]]
-
-    invalid_mask = (label_np != 255) & ~valid_mask
-    if invalid_mask.any():
-        uniq = np.unique(label_np[invalid_mask])
-        print(f"[WARN] Found INVALID labels (not 0..17 or 255): {uniq}")
-
-    return mapped
-
 
 class DFC2020Dataset(Dataset):
-    OPTICAL_CHANNELS_10 = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+    OPTICAL_CHANNELS_10 = [1,2,3,4,5,6,7,8,10,11]
 
     def __init__(self, hf_split, input_size=96, filter_empty=True):
         self.input_size = input_size
         self.raw_split = hf_split
         self.filter_empty = filter_empty
 
-        # ---- Filter examples with all-ignore masks ----
+        # ---- Filter examples with all-ignore masks (only 255) ----
         self.valid_indices = []
         for idx, example in enumerate(self.raw_split):
-            label = map_labels_safe(np.array(example["label"], dtype=np.int64))
-            # Ignore pixels >7
-            label[label > 7] = 255
+            label = np.array(example["label"], dtype=np.int64)
             if filter_empty:
                 if (label != 255).any():
                     self.valid_indices.append(idx)
@@ -81,9 +57,9 @@ class DFC2020Dataset(Dataset):
 
         x = torch.cat([radar, optical], dim=0)
 
-        # ---- Map label ----
-        label = torch.from_numpy(map_labels_safe(np.array(example["label"], dtype=np.int64)))
-        label[label > 7] = 255
+        # ---- Only mask out 255 ----
+        label = torch.from_numpy(np.array(example["label"], dtype=np.int64))
+        label[label > 7] = 255  # giữ 0..7, ignore >7
         if self.input_size is not None:
             label = interpolate(label.unsqueeze(0).unsqueeze(0).float(),
                                 size=(self.input_size, self.input_size),
@@ -92,14 +68,17 @@ class DFC2020Dataset(Dataset):
 
 
 # -------------------------------
-# Collate function to create batch
+# Collate function
 # -------------------------------
 def dfc2020_collate_fn(batch):
-    imgs = torch.stack([b["image"] for b in batch], dim=0)  # (B,C,H,W)
-    masks = torch.stack([b["mask"] for b in batch], dim=0)  # (B,H,W)
+    imgs = torch.stack([b["image"] for b in batch], dim=0)
+    masks = torch.stack([b["mask"] for b in batch], dim=0)
     return {"image": imgs, "mask": masks}
 
 
+# -------------------------------
+# DataLoader creation
+# -------------------------------
 def create_dfc2020_loaders(batch_size=None, input_size=None, num_workers=None):
     batch_size = batch_size or STAGE2["batch_size"]
     input_size = input_size or STAGE2["input_size"]

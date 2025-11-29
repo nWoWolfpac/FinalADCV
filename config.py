@@ -34,8 +34,8 @@ STAGE1 = {
 # Stage2: Segmentation on DFC2020
 STAGE2 = {
     "input_size": 96,  # DFC2020 patch size
-    "batch_size": 64,
-    "num_epochs": 1,
+    "batch_size": 256,
+    "num_epochs": 50,
     "freeze_encoder_epochs": 5,
     "encoder_lr": 5e-4,
     "decoder_lr": 2e-3,
@@ -43,7 +43,7 @@ STAGE2 = {
     "optimizer": "adamw",
     "scheduler": "cosine",
     "min_lr": 1e-6,
-    "num_workers": 32,
+    "num_workers":128,
     "pin_memory": True,
     "mixed_precision": True,
     "gradient_accumulation_steps": 1,
