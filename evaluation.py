@@ -9,7 +9,7 @@ from src.data.dataset_utils import create_dfc2020_loaders
 from src.models.deeplabv3plus import DeepLabV3Plus
 from src.models.segnet import SegNet
 from src.utils import SegmentationMetrics
-from config import DEVICE, STAGE2, NUM_CLASSES
+from config import DEVICE, STAGE2
 
 
 # Tên 8 lớp DFC2020
