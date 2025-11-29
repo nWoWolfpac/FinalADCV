@@ -37,12 +37,10 @@ STAGE2 = {
     "batch_size": 32,
     "num_epochs": 50,
     "freeze_encoder_epochs": 5,
-    "encoder_lr": 5e-4,
-    "decoder_lr": 2e-3,
+    "encoder_lr": 1e-5,
+    "decoder_lr": 2e-4,
     "weight_decay": 1e-3,
     "optimizer": "adamw",
-    "scheduler": "cosine",
-    "min_lr": 1e-6,
     "num_workers": 4,
     "pin_memory": True,
     "mixed_precision": True,
@@ -50,7 +48,7 @@ STAGE2 = {
     "save_best_only": True,
     "checkpoint_metric": "loss",
     "log_interval": 50,
-    "encoder_checkpoint": STAGE1["save_path"]  # sử dụng pretrain từ Stage1
+    "encoder_checkpoint": STAGE1["save_path"],
 }
 
 # Problem-specific: DFC2020

@@ -232,16 +232,22 @@ class Trainer:
             save_best_only=True,
             checkpoint_metric="loss",
             save_history=True,
-            history_csv_path="train_history.csv",
-            history_pickle_path="train_history.pkl"
+            early_stopping_patience=10,  # NEW: Early stopping
     ):
         history = []
+        epochs_without_improvement = 0
+        
         for epoch in range(1, num_epochs + 1):
             print(f"\nEpoch {epoch}/{num_epochs}")
             tr = self.train_epoch(train_loader, log_interval)
             val_metrics_obj = metrics_class(num_classes)
             val = self.validate(val_loader, val_metrics_obj)
-            print(f"Epoch {epoch} - train_loss: {tr['loss']:.4f}, val_loss: {val['loss']:.4f}")
+            
+            # Print metrics
+            miou = val.get("mean_iou", 0)
+            acc = val.get("pixel_accuracy", 0)
+            print(f"Epoch {epoch} - train_loss: {tr['loss']:.4f}, val_loss: {val['loss']:.4f}, mIoU: {miou:.4f}, acc: {acc:.4f}")
+            
             epoch_dict = {
                 "train_loss": tr["loss"],
                 "val_loss": val["loss"],
@@ -249,34 +255,46 @@ class Trainer:
             }
             history.append(epoch_dict)
 
-            if self.scheduler and not isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                self.scheduler.step()
+            # Scheduler step
+            if self.scheduler:
+                if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step(val["loss"])
+                else:
+                    self.scheduler.step()
 
+            # Check if best
             metric_val = val.get(checkpoint_metric, val["loss"])
             is_best = (self.best_metric is None) or (metric_val < self.best_metric)
 
             if is_best:
                 self.best_metric = metric_val
                 self._save_checkpoint(epoch, best=True)
+                epochs_without_improvement = 0
             else:
+                epochs_without_improvement += 1
                 if not save_best_only:
                     self._save_checkpoint(epoch, best=False)
+            
+            # Early stopping check
+            if early_stopping_patience and epochs_without_improvement >= early_stopping_patience:
+                print(f"\n>>> Early stopping triggered! No improvement for {early_stopping_patience} epochs.")
+                break
 
-        if save_history:
+        # Save history to checkpoint_dir (FIXED: save to correct directory)
+        if save_history and history:
             import csv, pickle
+            
+            # Save CSV to checkpoint_dir
+            csv_path = self.checkpoint_dir / "train_history.csv"
             keys = ["epoch", "train_loss", "val_loss"] + list(history[0]["metrics"].keys())
-            with open(history_csv_path, "w", newline="") as f:
+            with open(csv_path, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=keys)
                 writer.writeheader()
                 for i, e in enumerate(history):
                     row = {"epoch": i + 1, "train_loss": e["train_loss"], "val_loss": e["val_loss"]}
                     row.update(e["metrics"])
                     writer.writerow(row)
-            print(f">>> History saved as CSV: {history_csv_path}")
-
-            with open(history_pickle_path, "wb") as f:
-                pickle.dump(history, f)
-            print(f">>> History saved as Pickle: {history_pickle_path}")
+            print(f">>> History saved: {csv_path}")
 
         return history
 

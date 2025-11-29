@@ -314,14 +314,14 @@ def main():
         num_classes=NUM_CLASSES,
         log_interval=STAGE2["log_interval"],
         save_best_only=STAGE2["save_best_only"],
-        checkpoint_metric=STAGE2["checkpoint_metric"]
+        checkpoint_metric=STAGE2["checkpoint_metric"],
     )
 
     print("\n>>> Training completed!")
 
-    # ==================== SAVE HISTORY ====================
+    # ==================== PRINT HISTORY SUMMARY ====================
     print_history_summary(history)
-    save_history_csv(history, checkpoint_dir / "train_history.csv")
+    # Note: train_history.csv already saved by Trainer to checkpoint_dir
 
     # ==================== LOAD BEST MODEL ====================
     best_ckpt = checkpoint_dir / "best_model.pth"

@@ -21,26 +21,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="2e3a102a-a123-40f6-adc6-e65bda737b8b" name="Changes" comment="up">
-      <change afterPath="$PROJECT_DIR$/.cadence/configs/Try Unetpp.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/run.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.cadence.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/.cadence.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/FinalADCV.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/FinalADCV.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CADENCE_GUIDE.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/CADENCE_QUICK_REF.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/cadence_configs/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/cadence_configs/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cadence_configs/mobilevit.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/cadence_configs/quick_test.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/cadence_configs/resnet101.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/cadence_configs/resnet50.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/compare_results.py" beforeDir="false" afterPath="$PROJECT_DIR$/compare_results.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_experiments.bat" beforeDir="false" afterPath="$PROJECT_DIR$/run_experiments.bat" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_experiments.sh" beforeDir="false" afterPath="$PROJECT_DIR$/run_experiments.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/models/unetplusplus.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/models/unetplusplus.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/training_decoder.py" beforeDir="false" afterPath="$PROJECT_DIR$/training_decoder.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/training_unetpp.py" beforeDir="false" afterPath="$PROJECT_DIR$/training_unetpp.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -71,17 +54,17 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ChosenLaunchSetupPropertyKey&quot;: &quot;Try Unetpp&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;Unet++&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;org.jetbrains.plugins.github.ui.GithubSettingsConfigurable&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ChosenLaunchSetupPropertyKey": "Try Unetpp",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "Unet++",
+    "settings.editor.selected.configurable": "preferences.pluginManager"
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -105,7 +88,15 @@
       <option name="project" value="LOCAL" />
       <updated>1764344350710</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="up">
+      <option name="closed" value="true" />
+      <created>1764390286476</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1764390286476</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
