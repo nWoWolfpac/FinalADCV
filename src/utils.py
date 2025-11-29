@@ -366,7 +366,20 @@ def evaluate(model, val_loader, num_classes=8, device="cuda"):
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="Evaluating", ncols=100):
             imgs = _get_images_from_batch(batch, device)
-            labels = batch["mask"].to(device)
+            
+            if "mask" in batch:
+                labels = batch["mask"].to(device)
+            elif "label" in batch:
+                labels = batch["label"].to(device)
+            elif "labels" in batch:
+                labels = batch["labels"].to(device)
+            else:
+                raise KeyError("No mask/label/labels found in batch")
+            
+            # Handle mask shape: [B, 1, H, W] -> [B, H, W]
+            if labels.dim() == 4 and labels.size(1) == 1:
+                labels = labels.squeeze(1)
+            
             preds = model(imgs).argmax(dim=1)
             cm = confusion_matrix(preds, labels, num_classes)
             total_cm += cm.to(total_cm.device)
@@ -390,24 +403,41 @@ def evaluate(model, val_loader, num_classes=8, device="cuda"):
 
 
 def visualize_predictions(model, loader, device, save_dir, max_samples=5):
+    """
+    Visualize predictions on test/val dataset.
+    Assumes 12-channel input: [VV, VH, B02, B03, B04, B05, B06, B07, B08, B8A, B11, B12]
+    """
     os.makedirs(save_dir, exist_ok=True)
     model.eval()
     count = 0
     with torch.no_grad():
         for batch in loader:
             imgs = _get_images_from_batch(batch, device)
-            masks = batch["mask"].to(device)
+            
+            if "mask" in batch:
+                masks = batch["mask"].to(device)
+            elif "label" in batch:
+                masks = batch["label"].to(device)
+            elif "labels" in batch:
+                masks = batch["labels"].to(device)
+            else:
+                raise KeyError("No mask/label/labels found in batch")
+            
+            if masks.dim() == 4 and masks.size(1) == 1:
+                masks = masks.squeeze(1)
+            
             preds = model(imgs).argmax(dim=1).cpu()
             imgs = imgs.cpu()
             masks = masks.cpu()
 
-            # Sentinel-2 optical channels + radar
-            B02 = imgs[:, 1]  # Blue
-            B03 = imgs[:, 2]  # Green
-            B04 = imgs[:, 3]  # Red
-            B08 = imgs[:, 7]  # NIR
-            VV = imgs[:, 10]
-            VH = imgs[:, 11]
+            # 12-channel input: [VV, VH, B02, B03, B04, B05, B06, B07, B08, B8A, B11, B12]
+            VV = imgs[:, 0]   # Radar VV
+            VH = imgs[:, 1]   # Radar VH
+            B02 = imgs[:, 2]  # Blue
+            B03 = imgs[:, 3]  # Green
+            B04 = imgs[:, 4]  # Red
+            B08 = imgs[:, 8]  # NIR
+            
             ndvi = (B08 - B04) / (B08 + B04 + 1e-6)
 
             def norm(x):
@@ -421,22 +451,22 @@ def visualize_predictions(model, loader, device, save_dir, max_samples=5):
                 fig, ax = plt.subplots(1, 5, figsize=(20, 4))
                 rgb = np.stack([norm(B04[i]), norm(B03[i]), norm(B02[i])], axis=-1)
                 radar_comp = np.stack([norm(VV[i]), norm(VH[i]), np.zeros_like(norm(VV[i]))], axis=-1)
-                ax[0].imshow(rgb);
-                ax[0].set_title("RGB Composite");
+                ax[0].imshow(rgb)
+                ax[0].set_title("RGB Composite")
                 ax[0].axis("off")
-                ax[1].imshow(ndvi[i].numpy(), cmap="RdYlGn");
-                ax[1].set_title("NDVI");
+                ax[1].imshow(ndvi[i].numpy(), cmap="RdYlGn")
+                ax[1].set_title("NDVI")
                 ax[1].axis("off")
-                ax[2].imshow(radar_comp);
-                ax[2].set_title("Radar (VV,VH)");
+                ax[2].imshow(radar_comp)
+                ax[2].set_title("Radar (VV,VH)")
                 ax[2].axis("off")
-                ax[3].imshow(masks[i].numpy(), cmap="viridis");
-                ax[3].set_title("GT Mask");
+                ax[3].imshow(masks[i].numpy(), cmap="viridis")
+                ax[3].set_title("GT Mask")
                 ax[3].axis("off")
-                ax[4].imshow(preds[i].numpy(), cmap="viridis");
-                ax[4].set_title("Prediction");
+                ax[4].imshow(preds[i].numpy(), cmap="viridis")
+                ax[4].set_title("Prediction")
                 ax[4].axis("off")
                 plt.tight_layout()
-                plt.savefig(f"{save_dir}/sample_{count}.png")
+                plt.savefig(f"{save_dir}/sample_{count}.png", dpi=150, bbox_inches='tight')
                 plt.close()
                 count += 1
