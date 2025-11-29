@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.models.encoder import EncoderClassifier
+from src.models.encoder import EncoderBackbone as EncoderClassifier
 
 
 class UpBlock(nn.Module):
