@@ -286,7 +286,12 @@ def main():
         checkpoint_dir = Path(args.checkpoint_dir)
     else:
         ds_suffix = "_ds" if args.deep_supervision else ""
-        checkpoint_dir = Path(f"checkpoints_unetpp_{args.backbone}{ds_suffix}")
+        # Use /kaggle/working/ for Kaggle environment
+        kaggle_base = Path("/kaggle/working")
+        if kaggle_base.exists():
+            checkpoint_dir = kaggle_base / f"checkpoints_unetpp_{args.backbone}{ds_suffix}"
+        else:
+            checkpoint_dir = Path(f"checkpoints_unetpp_{args.backbone}{ds_suffix}")
     
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     print(f">>> Checkpoints will be saved to: {checkpoint_dir}")

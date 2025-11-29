@@ -7,6 +7,8 @@ script: training_unetpp.py
 # Arguments - Change backbone here
 args:
   backbone: resnet50  # Options: resnet18, resnet50, resnet101, mobilevit
+  # backbone: resnet18
+  # backbone: resnet101
   deep_supervision: true
   visualize: true
 

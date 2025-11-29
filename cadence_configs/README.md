@@ -5,8 +5,7 @@
 - `resnet18` - Fastest
 - `resnet50` - Recommended
 - `resnet101` - Best accuracy
-- `mobilevit` - Mobile-friendly
-- `mobilenetv4_hybrid` - Efficient
+
 
 ## Cách sử dụng
 
