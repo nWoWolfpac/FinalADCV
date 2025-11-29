@@ -76,10 +76,11 @@ class UNetPlusPlus(nn.Module):
 
         # Final classifiers
         if deep_supervision:
-            self.final_conv_0_4 = nn.Conv2d(self.decoder_channels[0], num_classes, kernel_size=1)
-            self.final_conv_0_3 = nn.Conv2d(self.decoder_channels[0], num_classes, kernel_size=1)
-            self.final_conv_0_2 = nn.Conv2d(self.decoder_channels[0], num_classes, kernel_size=1)
-            self.final_conv_0_1 = nn.Conv2d(self.decoder_channels[0], num_classes, kernel_size=1)
+            # Each output has different number of channels from its decoder block
+            self.final_conv_0_4 = nn.Conv2d(self.decoder_channels[0], num_classes, kernel_size=1)  # x0_4 from dec0_4
+            self.final_conv_0_3 = nn.Conv2d(self.decoder_channels[3], num_classes, kernel_size=1)  # x0_3 from dec0_3
+            self.final_conv_0_2 = nn.Conv2d(self.decoder_channels[2], num_classes, kernel_size=1)  # x0_2 from dec0_2
+            self.final_conv_0_1 = nn.Conv2d(self.decoder_channels[1], num_classes, kernel_size=1)  # x0_1 from dec0_1
         else:
             self.final_conv = nn.Conv2d(self.decoder_channels[0], num_classes, kernel_size=1)
 
@@ -141,31 +142,11 @@ class UNetPlusPlus(nn.Module):
                 m.stem.conv = new_conv
                 print(f">>> Updated MobileViT first conv to {self.input_channels} channels")
 
-        elif self.backbone_name == "mobilenetv4_hybrid":
-            m = self.encoder.vision_encoder
-            
-            self.enc0 = nn.Sequential(m.conv_stem, m.bn1)
-            self.enc1 = nn.Sequential(m.blocks[0], m.blocks[1])
-            self.enc2 = nn.Sequential(m.blocks[2], m.blocks[3]) if len(m.blocks) > 3 else m.blocks[2]
-            self.enc3 = nn.Sequential(m.blocks[4], m.blocks[5]) if len(m.blocks) > 5 else m.blocks[3]
-            self.enc4 = nn.Sequential(*m.blocks[6:]) if len(m.blocks) > 6 else m.blocks[4]
-            
-            if self.input_channels != 3:
-                old_conv = m.conv_stem
-                new_conv = nn.Conv2d(
-                    self.input_channels,
-                    old_conv.out_channels,
-                    kernel_size=old_conv.kernel_size,
-                    stride=old_conv.stride,
-                    padding=old_conv.padding,
-                    bias=old_conv.bias is not None
-                )
-                nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
-                m.conv_stem = new_conv
-                print(f">>> Updated MobileNetV4 first conv to {self.input_channels} channels")
-
         else:
-            raise ValueError(f"Unsupported backbone: {self.backbone_name}")
+            raise ValueError(
+                f"Unsupported backbone: {self.backbone_name}. "
+                f"Supported backbones: resnet18, resnet50, resnet101, mobilevit"
+            )
 
     def _infer_encoder_channels(self):
         """Infer output channels for each encoder stage"""

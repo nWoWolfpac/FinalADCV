@@ -92,10 +92,11 @@ def main():
         "--exp_dirs",
         nargs="+",
         default=[
-            "experiments/exp1_resnet50_baseline",
+            "experiments/exp1_resnet18_ds",
             "experiments/exp2_resnet50_ds",
-            "experiments/exp3_mobilevit_ds",
-            "experiments/exp4_resnet101_ds",
+            "experiments/exp3_resnet101_ds",
+            "experiments/exp4_mobilevit_ds",
+            "experiments/exp5_mobilenetv4_ds",
         ],
         help="List of experiment directories to compare"
     )

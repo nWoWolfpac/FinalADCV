@@ -1,13 +1,14 @@
-# UNet++ ResNet50 Training Configuration
-name: "UNet++ ResNet50 + Deep Supervision"
+# UNet++ Training Configuration
+# Supported backbones: resnet18, resnet50, resnet101, mobilevit
+
+name: "UNet++ Training"
 script: training_unetpp.py
 
-# Arguments
+# Arguments - Change backbone here
 args:
-  backbone: resnet50
+  backbone: resnet50  # Options: resnet18, resnet50, resnet101, mobilevit
   deep_supervision: true
   visualize: true
-  # encoder_checkpoint: checkpoints_stage1/resnet50_encoder.pth  # Uncomment if you have pretrained encoder
 
 # Environment
 environment:
@@ -27,10 +28,10 @@ sync:
     - "src/**"
     - "config.py"
   download:
-    - "checkpoints_unetpp_resnet50_ds/**"
+    - "checkpoints_*/**"
     - "*.csv"
 
 # Cost control
 cost:
-  max_cost: 15.00  # USD
+  max_cost: 15.00
   auto_stop: true

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="Cadence.History.Table.Properties">
+    <option name="COLUMN_ID_VISIBILITY">
+      <map>
+        <entry key="Author" value="true" />
+        <entry key="Cost" value="true" />
+        <entry key="Description" value="true" />
+        <entry key="Duration" value="true" />
+        <entry key="Id" value="true" />
+        <entry key="Name" value="true" />
+        <entry key="Price" value="true" />
+        <entry key="Resources" value="true" />
+        <entry key="Start Time" value="true" />
+        <entry key="Status" value="true" />
+      </map>
+    </option>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="2e3a102a-a123-40f6-adc6-e65bda737b8b" name="Changes" comment="up">
+      <change afterPath="$PROJECT_DIR$/.cadence/configs/Try Unetpp.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/run.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.cadence.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/.cadence.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/FinalADCV.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/FinalADCV.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CADENCE_GUIDE.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/CADENCE_QUICK_REF.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cadence_configs/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/cadence_configs/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cadence_configs/mobilevit.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cadence_configs/quick_test.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cadence_configs/resnet101.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cadence_configs/resnet50.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/compare_results.py" beforeDir="false" afterPath="$PROJECT_DIR$/compare_results.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run_experiments.bat" beforeDir="false" afterPath="$PROJECT_DIR$/run_experiments.bat" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run_experiments.sh" beforeDir="false" afterPath="$PROJECT_DIR$/run_experiments.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/models/unetplusplus.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/models/unetplusplus.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/training_decoder.py" beforeDir="false" afterPath="$PROJECT_DIR$/training_decoder.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/training_unetpp.py" beforeDir="false" afterPath="$PROJECT_DIR$/training_unetpp.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Sihieu&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/nWoWolfpac/FinalADCV.git&quot;,
+    &quot;accountId&quot;: &quot;63958331-f9d8-4e88-a5f3-229fa8a63e40&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="3673i1V0Xh8jlKKAaZGhmK89r4D" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ChosenLaunchSetupPropertyKey&quot;: &quot;Try Unetpp&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;Unet++&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;org.jetbrains.plugins.github.ui.GithubSettingsConfigurable&quot;
+  }
+}</component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-7e47963ff851-f0eec537fc84-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.23892.515" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="2e3a102a-a123-40f6-adc6-e65bda737b8b" name="Changes" comment="" />
+      <created>1764343908347</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1764343908347</updated>
+    </task>
+    <task id="LOCAL-00001" summary="up">
+      <option name="closed" value="true" />
+      <created>1764344350710</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1764344350710</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
+    <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="up" />
+    <option name="LAST_COMMIT_MESSAGE" value="up" />
+  </component>
+</project>

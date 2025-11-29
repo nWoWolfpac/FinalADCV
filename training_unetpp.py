@@ -91,11 +91,15 @@ def visualize_predictions(model, loader, device, save_dir, max_samples=5):
                 ax[2].set_title("Radar (VV,VH)")
                 ax[2].axis("off")
 
-                ax[3].imshow(masks[i].numpy(), cmap="tab10", vmin=0, vmax=7)
+                # Squeeze mask if it has extra dimension (1, H, W) -> (H, W)
+                mask_np = masks[i].squeeze().numpy()
+                pred_np = preds[i].squeeze().numpy()
+                
+                ax[3].imshow(mask_np, cmap="tab10", vmin=0, vmax=7)
                 ax[3].set_title("Ground Truth")
                 ax[3].axis("off")
 
-                ax[4].imshow(preds[i].numpy(), cmap="tab10", vmin=0, vmax=7)
+                ax[4].imshow(pred_np, cmap="tab10", vmin=0, vmax=7)
                 ax[4].set_title("Prediction")
                 ax[4].axis("off")
 
@@ -155,8 +159,8 @@ def main():
         "--backbone", 
         type=str, 
         default="resnet50",
-        choices=["resnet18", "resnet50", "resnet101", "mobilevit", "mobilenetv4_hybrid"],
-        help="Backbone architecture for encoder"
+        choices=["resnet18", "resnet50", "resnet101", "mobilevit"],
+        help="Backbone architecture for encoder (resnet18, resnet50, resnet101, mobilevit)"
     )
     parser.add_argument(
         "--deep_supervision", 

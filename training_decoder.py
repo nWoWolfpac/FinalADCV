@@ -272,10 +272,10 @@ def main():
     model.load_state_dict(checkpoint["model_state_dict"])
     print(f">>> Loaded best checkpoint: {best_ckpt}")
 
-    # Visualization
-    save_dir = f"{checkpoint_dir}/visualization_final"
-    visualize_predictions(model, val_loader, DEVICE, save_dir)
-    print(f">>> Saved visualizations to: {save_dir}")
+    # # Visualization
+    # save_dir = f"{checkpoint_dir}/visualization_final"
+    # visualize_predictions(model, val_loader, DEVICE, save_dir)
+    # print(f">>> Saved visualizations to: {save_dir}")
 
 
 if __name__ == "__main__":
