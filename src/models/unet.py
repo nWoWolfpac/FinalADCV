@@ -251,9 +251,16 @@ class UNet(nn.Module):
         Dynamically infer channel sizes from encoder layers by forward pass.
         This allows the model to work with different ResNet architectures (18, 50, 101).
         """
+        # Get device from model parameters if available, otherwise use CPU
+        try:
+            device = next(self.parameters()).device
+        except StopIteration:
+            # Model has no parameters yet (shouldn't happen, but safe fallback)
+            device = torch.device('cpu')
+        
         self.eval()
         with torch.no_grad():
-            dummy = torch.zeros(1, 12, input_size, input_size)
+            dummy = torch.zeros(1, 12, input_size, input_size, device=device)
             x1 = self.inc(dummy)
             x2 = self.maxpool(x1)
             x2 = self.layer1(x2)
