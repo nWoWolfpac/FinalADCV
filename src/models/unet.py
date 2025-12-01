@@ -157,13 +157,13 @@ class UNet(nn.Module):
                 resnet.conv1,
                 resnet.bn1,
                 resnet.act1
-            )  # Output: (B, 64, H/2, W/2)
+            )
             
-            self.maxpool = resnet.maxpool  # Output: (B, 64, H/4, W/4)
-            self.layer1 = resnet.layer1    # Output: (B, 256, H/4, W/4) - Skip 1
-            self.layer2 = resnet.layer2    # Output: (B, 512, H/8, W/8) - Skip 2
-            self.layer3 = resnet.layer3    # Output: (B, 1024, H/16, W/16) - Skip 3
-            self.layer4 = resnet.layer4    # Output: (B, 2048, H/32, W/32) - Bottleneck
+            self.maxpool = resnet.maxpool
+            self.layer1 = resnet.layer1
+            self.layer2 = resnet.layer2
+            self.layer3 = resnet.layer3
+            self.layer4 = resnet.layer4
             
             # Update first conv to accept multi-channel input
             if input_channels != 3:
@@ -203,40 +203,73 @@ class UNet(nn.Module):
                 )
                 print(f">>> Updated conv1 to accept {input_channels} input channels (was {old_in_channels}, S1+S2)")
             
+            # Dynamically infer channel sizes from encoder layers
+            self._infer_channels(input_size=64)
+            
             # ===== DECODER with U-Net SKIP CONNECTIONS =====
             # Each decoder block upsamples and concatenates with encoder skip
             # Args: (x1_channels, x2_channels, out_channels)
             # x1: from decoder (lower resolution), x2: from encoder skip (higher resolution)
-            self.up1 = Up(2048, 1024, 1024, bilinear, dropout=dropout)  # Combine layer4 (2048) + layer3 (1024) -> 1024
-            self.up2 = Up(1024, 512, 512, bilinear, dropout=dropout)    # Combine up1 (1024) + layer2 (512) -> 512
-            self.up3 = Up(512, 256, 256, bilinear, dropout=dropout)     # Combine up2 (512) + layer1 (256) -> 256
-            self.up4 = Up(256, 64, 128, bilinear, dropout=dropout)      # Combine up3 (256) + inc (64) -> 128
+            # Use dynamically inferred channels
+            self.up1 = Up(self.channels[4], self.channels[3], self.channels[3], bilinear, dropout=dropout)
+            self.up2 = Up(self.channels[3], self.channels[2], self.channels[2], bilinear, dropout=dropout)
+            self.up3 = Up(self.channels[2], self.channels[1], self.channels[1], bilinear, dropout=dropout)
+            self.up4 = Up(self.channels[1], self.channels[0], self.channels[1] // 2, bilinear, dropout=dropout)
             
             # Final upsampling to original resolution
+            final_channels = self.channels[1] // 2
             if bilinear:
                 self.up5 = nn.Sequential(
                     nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-                    DoubleConv(128, 64, dropout=dropout)
+                    DoubleConv(final_channels, final_channels // 2, dropout=dropout)
                 )
             else:
                 self.up5 = nn.Sequential(
-                    nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
-                    nn.BatchNorm2d(64),
+                    nn.ConvTranspose2d(final_channels, final_channels // 2, kernel_size=2, stride=2),
+                    nn.BatchNorm2d(final_channels // 2),
                     nn.ReLU(inplace=True),
-                    DoubleConv(64, 64, dropout=dropout)
+                    DoubleConv(final_channels // 2, final_channels // 2, dropout=dropout)
                 )
             
             # Output layer
-            self.outc = nn.Conv2d(64, num_classes, kernel_size=1)
+            self.outc = nn.Conv2d(final_channels // 2, num_classes, kernel_size=1)
             
             # Initialize output layer
             nn.init.xavier_uniform_(self.outc.weight)
             nn.init.constant_(self.outc.bias, 0)
             
+            print(f">>> UNet decoder initialized with channels: inc={self.channels[0]}, layer1={self.channels[1]}, "
+                  f"layer2={self.channels[2]}, layer3={self.channels[3]}, layer4={self.channels[4]}")
+            
         elif backbone in ["mobilevit", "mobilenetv4_hybrid"]:
             raise NotImplementedError(f"U-Net with {backbone} backbone not yet implemented. Use ResNet.")
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
+    
+    def _infer_channels(self, input_size=64):
+        """
+        Dynamically infer channel sizes from encoder layers by forward pass.
+        This allows the model to work with different ResNet architectures (18, 50, 101).
+        """
+        self.eval()
+        with torch.no_grad():
+            dummy = torch.zeros(1, 12, input_size, input_size)
+            x1 = self.inc(dummy)
+            x2 = self.maxpool(x1)
+            x2 = self.layer1(x2)
+            x3 = self.layer2(x2)
+            x4 = self.layer3(x3)
+            x5 = self.layer4(x4)
+            
+            # Store channel sizes: [inc, layer1, layer2, layer3, layer4]
+            self.channels = [
+                x1.shape[1],  # inc output channels
+                x2.shape[1],  # layer1 output channels
+                x3.shape[1],  # layer2 output channels
+                x4.shape[1],  # layer3 output channels
+                x5.shape[1],  # layer4 output channels
+            ]
+        self.train()
     
     def forward(self, x):
         """
@@ -249,21 +282,22 @@ class UNet(nn.Module):
             Segmentation logits (B, num_classes, H, W)
         """
         # ===== ENCODER with SKIP CONNECTIONS =====
-        x1 = self.inc(x)              # (B, 64, H/2, W/2) - Skip 0
-        x2 = self.maxpool(x1)         # (B, 64, H/4, W/4)
-        x2 = self.layer1(x2)          # (B, 256, H/4, W/4) - Skip 1
-        x3 = self.layer2(x2)          # (B, 512, H/8, W/8) - Skip 2
-        x4 = self.layer3(x3)          # (B, 1024, H/16, W/16) - Skip 3
-        x5 = self.layer4(x4)          # (B, 2048, H/32, W/32) - Bottleneck
+        # Channel sizes are dynamically inferred based on backbone
+        x1 = self.inc(x)              # (B, C0, H/2, W/2) - Skip 0
+        x2 = self.maxpool(x1)         # (B, C0, H/4, W/4)
+        x2 = self.layer1(x2)          # (B, C1, H/4, W/4) - Skip 1
+        x3 = self.layer2(x2)          # (B, C2, H/8, W/8) - Skip 2
+        x4 = self.layer3(x3)          # (B, C3, H/16, W/16) - Skip 3
+        x5 = self.layer4(x4)          # (B, C4, H/32, W/32) - Bottleneck
         
         # ===== DECODER with U-Net SKIP CONNECTIONS =====
-        d4 = self.up1(x5, x4)  # (B, 1024, H/16, W/16) - combine with layer3
-        d3 = self.up2(d4, x3)   # (B, 512, H/8, W/8)    - combine with layer2
-        d2 = self.up3(d3, x2)   # (B, 256, H/4, W/4)    - combine with layer1
-        d1 = self.up4(d2, x1)   # (B, 128, H/2, W/2)    - combine with inc
+        d4 = self.up1(x5, x4)  # Combine layer4 (C4) + layer3 (C3) -> C3
+        d3 = self.up2(d4, x3)   # Combine up1 (C3) + layer2 (C2) -> C2
+        d2 = self.up3(d3, x2)   # Combine up2 (C2) + layer1 (C1) -> C1
+        d1 = self.up4(d2, x1)   # Combine up3 (C1) + inc (C0) -> C1//2
         
         # Final upsampling to original resolution
-        out = self.up5(d1)      # (B, 64, H, W)
+        out = self.up5(d1)      # (B, C1//4, H, W)
         logits = self.outc(out)  # (B, num_classes, H, W)
         
         return logits

@@ -203,6 +203,12 @@ def main():
             resnet.bn1,    # Sử dụng pretrained bn1
             resnet.act1    # Sử dụng pretrained act1
         )
+        
+        # Verify channel sizes match after replacing encoder layers
+        # (should be the same since both use the same backbone)
+        model._infer_channels(input_size=64)
+        print(f">>> Verified encoder channels: inc={model.channels[0]}, layer1={model.channels[1]}, "
+              f"layer2={model.channels[2]}, layer3={model.channels[3]}, layer4={model.channels[4]}")
     
     print(f">>> Updated UNet encoder with pretrained weights and 12-band input (S1+S2)")
 
