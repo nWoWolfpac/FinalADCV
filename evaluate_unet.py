@@ -70,17 +70,21 @@ def remap_checkpoint_keys(state_dict):
         key_groups[final_key].append((key, value, priority))
     
     # Second pass: resolve duplicates by choosing highest priority
+    duplicate_count = 0
     for final_key, candidates in key_groups.items():
         # Sort by priority (highest first)
         candidates.sort(key=lambda x: x[2], reverse=True)
         # Use the highest priority candidate
         new_state_dict[final_key] = candidates[0][1]
         
-        # Warn if there were duplicates
+        # Count duplicates
         if len(candidates) > 1:
             priorities = [c[2] for c in candidates]
             if len(set(priorities)) > 1:  # Different priorities
-                print(f"  Note: Key '{final_key}' had {len(candidates)} variants, using highest priority")
+                duplicate_count += 1
+    
+    if duplicate_count > 0:
+        print(f"  Note: Resolved {duplicate_count} duplicate keys by selecting highest priority variants")
     
     return new_state_dict
 
@@ -148,16 +152,28 @@ def load_model(checkpoint_path, backbone="resnet50", num_classes_encoder=19, dro
     # Remap checkpoint keys to match current model structure
     remapped_state_dict = remap_checkpoint_keys(checkpoint_state_dict)
     
-    # Get model's expected keys
+    # Get model's expected keys - chỉ lấy các keys từ layers đã được thay thế
+    # Bỏ qua encoder_model vì các layers đã được thay thế trực tiếp
     model_state_dict = model.state_dict()
     
-    # Filter out keys that don't exist in the model
+    # Chỉ load vào các layers đã được thay thế: inc, maxpool, layer1-4, và decoder (up1-5, outc)
+    # Bỏ qua encoder_model vì nó không được sử dụng sau khi thay thế
+    keys_to_load = set()
+    encoder_model_keys = set()
+    for key in model_state_dict.keys():
+        # Tách riêng encoder_model keys để bỏ qua
+        if key.startswith("encoder_model"):
+            encoder_model_keys.add(key)
+        else:
+            keys_to_load.add(key)
+    
+    # Filter checkpoint keys to only include those we want to load
     filtered_state_dict = {}
     missing_keys = []
     unexpected_keys = []
     
     for key, value in remapped_state_dict.items():
-        if key in model_state_dict:
+        if key in keys_to_load:
             # Check if shapes match
             if model_state_dict[key].shape == value.shape:
                 filtered_state_dict[key] = value
@@ -166,32 +182,65 @@ def load_model(checkpoint_path, backbone="resnet50", num_classes_encoder=19, dro
                       f"checkpoint {value.shape} vs model {model_state_dict[key].shape}")
                 missing_keys.append(key)
         else:
-            unexpected_keys.append(key)
+            # Key không trong keys_to_load - có thể là từ encoder_model hoặc không cần thiết
+            if not key.startswith("encoder_model"):
+                unexpected_keys.append(key)
     
-    # Find keys in model but not in checkpoint
-    for key in model_state_dict.keys():
+    # Find keys in model (keys_to_load) but not in checkpoint
+    for key in keys_to_load:
         if key not in filtered_state_dict:
             missing_keys.append(key)
     
+    # Tính toán số lượng keys được load thành công
+    encoder_keys_loaded = sum(1 for k in filtered_state_dict.keys() 
+                              if k.startswith(("inc.", "maxpool.", "layer1.", "layer2.", "layer3.", "layer4.")))
+    decoder_keys_loaded = sum(1 for k in filtered_state_dict.keys() 
+                              if k.startswith(("up1.", "up2.", "up3.", "up4.", "up5.", "outc.")))
+    
     if unexpected_keys:
-        print(f"\n>>> Warning: {len(unexpected_keys)} unexpected keys in checkpoint (will be ignored)")
-        if len(unexpected_keys) <= 10:
-            for key in unexpected_keys[:10]:
-                print(f"    - {key}")
-        else:
-            for key in unexpected_keys[:5]:
-                print(f"    - {key}")
-            print(f"    ... and {len(unexpected_keys) - 5} more")
+        # Chỉ hiển thị nếu có nhiều unexpected keys không phải từ encoder_model
+        non_encoder_unexpected = [k for k in unexpected_keys if not k.startswith("encoder_model")]
+        if non_encoder_unexpected:
+            print(f"\n>>> Info: {len(non_encoder_unexpected)} unexpected keys in checkpoint (will be ignored)")
+            if len(non_encoder_unexpected) <= 5:
+                for key in non_encoder_unexpected[:5]:
+                    print(f"    - {key}")
+            else:
+                for key in non_encoder_unexpected[:3]:
+                    print(f"    - {key}")
+                print(f"    ... and {len(non_encoder_unexpected) - 3} more")
     
     if missing_keys:
-        print(f"\n>>> Warning: {len(missing_keys)} keys missing from checkpoint (will use initialized weights)")
-        if len(missing_keys) <= 10:
-            for key in missing_keys[:10]:
-                print(f"    - {key}")
-        else:
-            for key in missing_keys[:5]:
-                print(f"    - {key}")
-            print(f"    ... and {len(missing_keys) - 5} more")
+        # Chỉ cảnh báo về các keys quan trọng (encoder layers và decoder)
+        important_missing = [k for k in missing_keys if not k.startswith("encoder_model")]
+        if important_missing:
+            print(f"\n>>> Warning: {len(important_missing)} important keys missing from checkpoint")
+            print(f"    (will use initialized weights - this may affect performance)")
+            # Phân loại missing keys
+            encoder_missing = [k for k in important_missing 
+                              if k.startswith(("inc.", "maxpool.", "layer1.", "layer2.", "layer3.", "layer4."))]
+            decoder_missing = [k for k in important_missing 
+                             if k.startswith(("up1.", "up2.", "up3.", "up4.", "up5.", "outc."))]
+            
+            if encoder_missing:
+                print(f"    - Encoder layers: {len(encoder_missing)} keys missing")
+            if decoder_missing:
+                print(f"    - Decoder layers: {len(decoder_missing)} keys missing")
+            
+            if len(important_missing) <= 10:
+                for key in important_missing[:10]:
+                    print(f"      - {key}")
+            else:
+                for key in important_missing[:5]:
+                    print(f"      - {key}")
+                print(f"      ... and {len(important_missing) - 5} more")
+    
+    # Thông tin tổng hợp
+    print(f"\n>>> Loading summary:")
+    print(f"    - Encoder layers: {encoder_keys_loaded} keys loaded")
+    print(f"    - Decoder layers: {decoder_keys_loaded} keys loaded")
+    print(f"    - Total loaded: {len(filtered_state_dict)}/{len(keys_to_load)} model parameters")
+    print(f"    - Encoder_model keys skipped: {len(encoder_model_keys)} (not needed after layer replacement)")
     
     # Load the filtered state dict with strict=False
     model.load_state_dict(filtered_state_dict, strict=False)
